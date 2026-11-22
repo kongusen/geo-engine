@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Geo Engine Playground</title>
+<style>
+  :root { color-scheme: dark; --accent: #10b981; }
+  body { margin: 0; background: #050b16; color: #e6f1ff; font: 14px/1.4 "PingFang SC", system-ui, sans-serif; display: grid; grid-template-columns: 1fr 260px; height: 100vh; }
+  #map { position: relative; min-width: 0; }
+  aside { border-left: 1px solid #1e293b; padding: 14px; overflow: auto; background: #07111f; }
+  h2 { font-size: 13px; color: #94a3b8; margin: 16px 0 8px; font-weight: 600; letter-spacing: .06em; }
+  button { display: block; width: 100%; margin: 4px 0; padding: 7px 10px; text-align: left; color: #e6f1ff; background: #0f1b2d; border: 1px solid #1e3a4c; border-radius: 6px; cursor: pointer; font: inherit; }
+  button:hover { border-color: var(--accent); }
+  label { display: flex; gap: 8px; align-items: center; margin: 5px 0; cursor: pointer; }
+  #crumbs { position: absolute; top: 12px; left: 14px; z-index: 5; padding: 6px 12px; background: rgba(2,6,23,.8); border: 1px solid #1e3a4c; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div id="map"><div id="crumbs">地球</div></div>
+<aside>
+  <h2>层级</h2>
+  <div id="stops"></div>
+  <h2>效果图层</h2>
+  <div id="layers"></div>
+  <h2>自动巡游</h2>
+  <button id="tour">开始巡游</button>
+  <h2>主色</h2>
+  <div id="accents"></div>
+</aside>
+<script src="dist/main.js"></script>
+</body>
+</html>

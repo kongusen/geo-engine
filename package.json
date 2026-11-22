@@ -1,0 +1,18 @@
+{
+  "name": "geo-engine-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.6.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "playground": "pnpm --filter @yaoyu/geo-engine-three playground",
+    "visual-check": "pnpm --filter @yaoyu/geo-engine-three visual-check",
+    "soak": "pnpm --filter @yaoyu/geo-engine-three soak",
+    "pack:to": "node scripts/pack.mjs"
+  }
+}
