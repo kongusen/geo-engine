@@ -1,0 +1,65 @@
+{
+  "name": "@geodive/three",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "geodive three.js renderer: globe ↔ extruded plate transitions, labels, points, overlays and tile basemap.",
+  "keywords": [
+    "gis",
+    "map",
+    "three",
+    "threejs",
+    "globe",
+    "3d-map",
+    "webgl"
+  ],
+  "homepage": "https://github.com/kongusen/geo-engine/tree/main/packages/three#readme",
+  "bugs": "https://github.com/kongusen/geo-engine/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kongusen/geo-engine.git",
+    "directory": "packages/three"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "rm -rf dist && esbuild src/index.ts --bundle --format=esm --platform=neutral --target=es2022 --sourcemap --external:three --external:three/* --external:@geodive/core --external:@geodive/data --outfile=dist/index.js && tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "playground": "esbuild playground/main.ts playground/lazy.ts --bundle --format=iife --outdir=playground/dist --servedir=playground --serve=5199",
+    "playground:build": "esbuild playground/main.ts playground/lazy.ts --bundle --format=iife --outdir=playground/dist",
+    "visual-check": "node scripts/visual-check.mjs",
+    "soak": "node scripts/soak.mjs",
+    "prepack": "pnpm build"
+  },
+  "dependencies": {
+    "@geodive/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "three": ">=0.170.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.3",
+    "@types/three": "0.187.0",
+    "esbuild": "0.28.2",
+    "playwright": "1.62.1",
+    "three": "0.187.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    },
+    "types": "./dist/index.d.ts"
+  }
+}

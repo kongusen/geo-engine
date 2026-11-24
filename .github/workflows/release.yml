@@ -1,0 +1,51 @@
+name: Release
+
+# 推送 vX.Y.Z / vX.Y.Z-pre tag 即发布三个包到 npm,并创建 GitHub Release。
+# 认证使用 npm trusted publishing(GitHub OIDC),npm 上为三个包配置的可信发布者须指向本文件 release.yml 与环境 npm。
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: write # 创建 GitHub Release
+      id-token: write # trusted publishing / provenance 所需的 OIDC 令牌
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # trusted publishing 需要 npm CLI 11.5.1 及以上
+      - run: npm install -g npm@^11.5.1
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - name: Publish to npm
+        env:
+          # 仅用于首次发布(包在 npm 上还不存在,无法配置可信发布者)。配置好 trusted publishing 后删除该 secret,见 RELEASING.md
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "$HOME/.npmrc"
+            echo "::warning::正在使用 NPM_TOKEN 发布。配置 trusted publishing 后请删除该 secret。"
+          fi
+          node scripts/release.mjs --tag "$GITHUB_REF_NAME"
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags="--generate-notes --verify-tag"
+          case "$GITHUB_REF_NAME" in *-*) flags="$flags --prerelease" ;; esac
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" $flags

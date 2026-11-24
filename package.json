@@ -1,5 +1,5 @@
 {
-  "name": "geo-engine-workspace",
+  "name": "geodive-workspace",
   "version": "0.0.0",
   "private": true,
   "packageManager": "pnpm@9.6.0",
@@ -10,9 +10,10 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "playground": "pnpm --filter @yaoyu/geo-engine-three playground",
-    "visual-check": "pnpm --filter @yaoyu/geo-engine-three visual-check",
-    "soak": "pnpm --filter @yaoyu/geo-engine-three soak",
-    "pack:to": "node scripts/pack.mjs"
+    "playground": "pnpm --filter @geodive/three playground",
+    "visual-check": "pnpm --filter @geodive/three visual-check",
+    "soak": "pnpm --filter @geodive/three soak",
+    "pack:to": "node scripts/pack.mjs",
+    "version:set": "node scripts/set-version.mjs"
   }
 }

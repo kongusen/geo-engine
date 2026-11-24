@@ -1,0 +1,55 @@
+{
+  "name": "@geodive/core",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "geodive engine: region tree, drill-down state machine, deep-link path resolution, layers and data binding. Renderer-agnostic.",
+  "keywords": [
+    "gis",
+    "map",
+    "drill-down",
+    "region",
+    "choropleth",
+    "engine"
+  ],
+  "homepage": "https://github.com/kongusen/geo-engine/tree/main/packages/core#readme",
+  "bugs": "https://github.com/kongusen/geo-engine/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kongusen/geo-engine.git",
+    "directory": "packages/core"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "rm -rf dist && esbuild src/index.ts --bundle --format=esm --platform=neutral --target=es2022 --sourcemap --external:@geodive/data --outfile=dist/index.js && tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepack": "pnpm build"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "@types/node": "22.15.3",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    },
+    "types": "./dist/index.d.ts"
+  },
+  "dependencies": {
+    "@geodive/data": "workspace:*"
+  }
+}

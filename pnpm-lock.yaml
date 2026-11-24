@@ -8,7 +8,11 @@ importers:
 
   .: {}
 
-  packages/geo-data:
+  packages/core:
+    dependencies:
+      '@geodive/data':
+        specifier: workspace:*
+        version: link:../data
     devDependencies:
       '@types/node':
         specifier: 22.15.3
@@ -23,11 +27,7 @@ importers:
         specifier: 4.1.11
         version: 4.1.11(@types/node@22.15.3)(vite@8.2.2(@types/node@22.15.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12))
 
-  packages/geo-engine:
-    dependencies:
-      '@yaoyu/geo-data':
-        specifier: workspace:*
-        version: link:../geo-data
+  packages/data:
     devDependencies:
       '@types/node':
         specifier: 22.15.3
@@ -42,11 +42,11 @@ importers:
         specifier: 4.1.11
         version: 4.1.11(@types/node@22.15.3)(vite@8.2.2(@types/node@22.15.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12))
 
-  packages/geo-engine-three:
+  packages/three:
     dependencies:
-      '@yaoyu/geo-engine':
+      '@geodive/core':
         specifier: workspace:*
-        version: link:../geo-engine
+        version: link:../core
     devDependencies:
       '@types/node':
         specifier: 22.15.3

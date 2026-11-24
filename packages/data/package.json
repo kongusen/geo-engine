@@ -1,0 +1,53 @@
+{
+  "name": "@geodive/data",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "geodive data layer: region source contract, id mapping, source routing / mounting, load policy, GeoJSON / TopoJSON ingest, CRS conversion and tile source descriptors.",
+  "keywords": [
+    "gis",
+    "geojson",
+    "region",
+    "drill-down",
+    "datav",
+    "natural-earth",
+    "tianditu"
+  ],
+  "homepage": "https://github.com/kongusen/geo-engine/tree/main/packages/data#readme",
+  "bugs": "https://github.com/kongusen/geo-engine/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kongusen/geo-engine.git",
+    "directory": "packages/data"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "rm -rf dist && esbuild src/index.ts --bundle --format=esm --platform=neutral --target=es2022 --sourcemap --outfile=dist/index.js && tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepack": "pnpm build"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "@types/node": "22.15.3",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    },
+    "types": "./dist/index.d.ts"
+  }
+}
