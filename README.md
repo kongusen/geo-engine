@@ -4,7 +4,13 @@
 
 引擎只提供机制，不包含业务数据。用哪份边界、哪家底图、显示什么审图号，都由接入方决定。
 
-当前版本 **v0.1.0**。
+[![npm](https://img.shields.io/npm/v/@geodive/core?label=npm%20%40geodive%2Fcore)](https://www.npmjs.com/package/@geodive/core)
+[![CI](https://github.com/kongusen/geo-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/kongusen/geo-engine/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/@geodive/core)](LICENSE)
+
+```bash
+npm install @geodive/core @geodive/three three
+```
 
 ## 分层
 
@@ -80,18 +86,92 @@ engine.on("select", ({ region }) => openDetailPanel(region));
 
 ## 安装
 
+三个包都发布在 npm 公共仓库，按需要的层级安装：
+
+| 用途 | 安装 |
+|---|---|
+| 完整能力：数据 + 引擎 + three.js 大屏场景 | `@geodive/core` `@geodive/three` `three` |
+| 只要数据层 + 引擎层，自己写渲染器（SVG / MapLibre / Canvas …） | `@geodive/core` |
+| 只做数据处理（如在 Node 里预处理边界、转换坐标系） | `@geodive/data` |
+
 ```bash
-pnpm add @geodive/core @geodive/three three   # 完整能力(npm / yarn 同理)
-pnpm add @geodive/core                        # 只用数据层 + 引擎层,自己写渲染器
+# npm
+npm install @geodive/core @geodive/three three
+
+# pnpm
+pnpm add @geodive/core @geodive/three three
+
+# yarn
+yarn add @geodive/core @geodive/three three
 ```
 
-- `@geodive/core` 依赖 `@geodive/data` 并转出它的全部导出，一般不需要单独安装数据层。
-- 包是构建好的 ESM JS，带类型声明，使用方不需要配置 `transpilePackages`。
-- 每个版本都由 GitHub Actions 从对应 tag 构建发布，并附带 npm provenance（可在 npm 页面核对来源提交）。
+```ts
+import { GeoEngine, datavSource } from "@geodive/core"; // 数据层的导出也从 core 取
+import { SceneHost } from "@geodive/three";
+```
+
+### 环境要求
+
+- **ESM**：包只提供 ES Module（`"type": "module"`），面向浏览器，使用 Vite / webpack / esbuild / Rollup 等打包工具可直接引用，不需要配置 `transpilePackages`。
+- **TypeScript**：自带类型声明，无需另装 `@types`。
+- **three.js**：`@geodive/three` 以 peer 依赖方式使用 `three >= 0.170`，由使用方安装并决定版本，避免页面里出现两份 three。
+- **数据层**：`@geodive/core` 已经依赖并转出 `@geodive/data` 的全部导出。pnpm 默认不允许引用未直接声明的依赖，所以要么从 `@geodive/core` 导入，要么把 `@geodive/data` 也装上，且版本与 core 保持一致。
+
+### 版本与升级
+
+- 三个包始终同版本发布，升级时一起升：
+
+  ```bash
+  pnpm up "@geodive/*" --latest    # npm:npm install @geodive/core@latest @geodive/three@latest
+  ```
+
+- 目前处于 0.x，次版本号（0.1 → 0.2）可能包含不兼容改动，建议锁定到补丁范围：`"@geodive/core": "~0.1.0"`。改动说明见 [GitHub Releases](https://github.com/kongusen/geo-engine/releases)。
+- 预发布版本发布在 `next` 标签：`npm install @geodive/core@next @geodive/three@next`。
+- 每个版本都由 GitHub Actions 从对应 tag 构建，并附带 npm provenance。可以在 npm 包页面查看来源提交，或在项目里运行 `npm audit signatures` 校验。
+
+### 国内镜像
+
+使用 npmmirror 等镜像时，新版本发布后可能要等几分钟到几十分钟才能同步。装不到最新版时：
+
+```bash
+npm view @geodive/core version --registry=https://registry.npmmirror.com   # 查看镜像上的版本
+npx cnpm sync @geodive/data @geodive/core @geodive/three                      # 触发镜像立即同步
+```
+
+也可以临时指定官方源安装：`npm install @geodive/core --registry=https://registry.npmjs.org`。
+
+### 不用打包工具（CDN）
+
+演示、原型或静态页面可以直接用浏览器的 import map 从 CDN 加载，版本号要写死：
+
+```html
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/",
+    "@geodive/data": "https://cdn.jsdelivr.net/npm/@geodive/data@0.1.0/dist/index.js",
+    "@geodive/core": "https://cdn.jsdelivr.net/npm/@geodive/core@0.1.0/dist/index.js",
+    "@geodive/three": "https://cdn.jsdelivr.net/npm/@geodive/three@0.1.0/dist/index.js"
+  }
+}
+</script>
+<div id="map" style="position:fixed;inset:0"></div>
+<script type="module">
+  import { GeoEngine, datavSource } from "@geodive/core";
+  import { SceneHost } from "@geodive/three";
+
+  const engine = new GeoEngine({ sources: [datavSource()] });
+  new SceneHost({ container: document.getElementById("map"), engine });
+  await engine.start();
+</script>
+```
+
+正式项目建议用打包工具安装，便于锁版本和做 tree-shaking。
 
 ### 离线 / 内网环境
 
-不能访问 npm 时，可以把包打成 `.tgz` 放进使用方仓库：
+完全不能访问 npm（及镜像）时，可以从源码把包打成 `.tgz` 放进使用方仓库：
 
 ```bash
 pnpm pack:to ../your-project/vendor/geo   # 会先跑类型检查和测试,输出三个 .tgz

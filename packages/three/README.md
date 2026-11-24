@@ -8,6 +8,12 @@
 
 依赖：`@geodive/core`，以及 peer 依赖 `three >= 0.170`。
 
+```bash
+npm install @geodive/core @geodive/three three
+```
+
+更多安装方式（国内镜像、CDN、离线包）见[仓库首页](https://github.com/kongusen/geo-engine#安装)。
+
 - [最小接入](#最小接入)
 - [场景选项 GeoSceneOptions](#场景选项-geosceneoptions)
 - [大屏部署：SceneHost](#大屏部署scenehost)

@@ -4,6 +4,12 @@
 
 `@geodive/core` 会整体转出本包的导出，所以接入方一般直接从 `@geodive/core` 导入。只有不用引擎、单独做数据处理时（比如在 Node 里跑预处理），才需要直接依赖本包。
 
+```bash
+npm install @geodive/data
+```
+
+更多安装方式（国内镜像、CDN、离线包）见[仓库首页](https://github.com/kongusen/geo-engine#安装)。
+
 - [区域模型](#区域模型)
 - [导入与坐标系](#导入与坐标系)
 - [数据源接口 RegionSource](#数据源接口-regionsource)

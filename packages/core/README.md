@@ -5,6 +5,12 @@
 - 只依赖 `@geodive/data`，并整体转出它的导出，所以从本包可以拿到数据层的全部能力。
 - 同一个引擎可以挂 three.js 大屏场景（`@geodive/three`），也可以挂自己写的 SVG 或 MapLibre 渲染器。
 
+```bash
+npm install @geodive/core          # 已包含 @geodive/data
+```
+
+更多安装方式（国内镜像、CDN、离线包）见[仓库首页](https://github.com/kongusen/geo-engine#安装)。
+
 - [核心概念](#核心概念)
 - [创建与生命周期](#创建与生命周期)
 - [下钻与定位](#下钻与定位)
