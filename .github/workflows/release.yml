@@ -21,9 +21,9 @@ jobs:
       contents: write # 创建 GitHub Release
       id-token: write # trusted publishing / provenance 所需的 OIDC 令牌
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
