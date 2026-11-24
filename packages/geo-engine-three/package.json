@@ -1,6 +1,6 @@
 {
   "name": "@yaoyu/geo-engine-three",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "three.js scene adapter for @yaoyu/geo-engine: extruded region plates, drill transitions, labels, points, picking.",

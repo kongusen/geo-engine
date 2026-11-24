@@ -10,7 +10,17 @@ const engine = createOverviewEngine();
 const container = document.getElementById("map")!;
 // 与大屏一致:SceneHost 负责 WebGL 上下文丢失后的重建
 const scene = new SceneHost(
-  { container, engine, theme: { accent: "#10b981", background: "#050b16" }, globe: { land: WORLD_LAND, initialView: [96, 20] }, attribution: "演示数据 · 非真实业务" },
+  {
+    container,
+    engine,
+    theme: { accent: "#10b981", background: "#050b16" },
+    globe: { land: WORLD_LAND, initialView: [96, 20] },
+    attribution: "演示数据 · 非真实业务",
+    onPointClick: (point) => {
+      const status = document.getElementById("point-status");
+      if (status) status.textContent = `已点击点位: ${point.name} (${point.id})`;
+    },
+  },
   { onStatus: (status) => (document.body.dataset.sceneStatus = status) },
 );
 
@@ -95,6 +105,12 @@ for (const color of ["#10b981", "#38bdf8", "#f59e0b", "#a78bfa"]) {
   b.style.borderLeft = `6px solid ${color}`;
   b.onclick = () => scene.setAccent(color);
   document.getElementById("accents")!.append(b);
+}
+const insetToggle = document.getElementById("safe-inset") as HTMLInputElement | null;
+if (insetToggle) {
+  insetToggle.onchange = () => {
+    scene.setViewportInset(insetToggle.checked ? { top: 120, right: 260, bottom: 140, left: 260 } : {});
+  };
 }
 engine.on("drill", ({ to }) => (document.getElementById("crumbs")!.textContent = ["地球", ...to.path.map((r) => r.name)].join(" › ")));
 

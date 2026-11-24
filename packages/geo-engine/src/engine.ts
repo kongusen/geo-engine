@@ -78,6 +78,12 @@ export interface GeoPlugin {
 export interface GeoEngineOptions {
   rootId?: string | null;
   maxDepth?: number;
+  /**
+   * 视图叶子层级:这些 level 的区域视为叶子(不展开子级,聚焦时显示自身)。
+   * 同一棵树服务多种视图时使用,如全国门店视图把省当作叶子,而县域视图仍可从省下钻到县。
+   * 运行时用 setLeafLevels 切换。
+   */
+  leafLevels?: string[];
   /** 叶子区域也可以聚焦(见 DrillOptions.allowLeafFocus)。 */
   allowLeafFocus?: boolean;
   sources?: GeoSource[];
@@ -110,8 +116,10 @@ export class GeoEngine {
   private pending = new Map<string, Promise<void>>();
   private loadedParents = new Set<string>();
   private selected: string | null = null;
+  private leafLevels: Set<string>;
 
   constructor(private options: GeoEngineOptions = {}) {
+    this.leafLevels = new Set(options.leafLevels ?? []);
     this.tree = new RegionTree();
     this.sources = [...(options.sources ?? [])];
     this.layers = [...(options.layers ?? [])];
@@ -119,6 +127,7 @@ export class GeoEngine {
       rootId: options.rootId ?? null,
       maxDepth: options.maxDepth,
       allowLeafFocus: options.allowLeafFocus,
+      isLeaf: (id) => this.isLeaf(id),
       loadChildren: (id) => this.loadChildren(id),
     });
     this.drill.events.on("change", (change) => {
@@ -211,6 +220,21 @@ export class GeoEngine {
     };
   }
 
+  /** 叶子判定:树上无子级,或属于当前视图叶子层级(见 leafLevels)。 */
+  isLeaf(id: string): boolean {
+    if (this.tree.isLeaf(id)) return true;
+    const level = this.tree.get(id)?.level;
+    return level !== undefined && this.leafLevels.has(level);
+  }
+
+  /** 切换视图叶子层级;有变化时重发当前帧(当前聚焦若受影响,渲染器随之切换展示内容)。 */
+  setLeafLevels(levels: string[] | null): void {
+    const next = new Set(levels ?? []);
+    if (next.size === this.leafLevels.size && [...next].every((level) => this.leafLevels.has(level))) return;
+    this.leafLevels = next;
+    this.emitFrame("init");
+  }
+
   hover(regionId: string | null): void {
     this.events.emit("hover", { region: regionId ? this.tree.get(regionId) ?? null : null });
   }
@@ -223,7 +247,7 @@ export class GeoEngine {
     if (redirect && redirect !== regionId && this.tree.has(redirect)) {
       if (await this.drill.drillTo(redirect)) return;
     }
-    const leaf = this.tree.isLeaf(regionId);
+    const leaf = this.isLeaf(regionId);
     if ((!leaf || this.options.allowLeafFocus) && this.drill.canDrillInto(regionId)) {
       const ok = await this.drill.drillDown(regionId);
       if (ok) return;
@@ -240,7 +264,7 @@ export class GeoEngine {
   frame(direction: EngineFrame["direction"] = "init"): EngineFrame {
     const drill = this.drill.state;
     const focus = drill.focusId ? this.tree.get(drill.focusId) ?? null : null;
-    const children = this.tree.children(drill.focusId);
+    const children = drill.focusId && this.isLeaf(drill.focusId) ? [] : this.tree.children(drill.focusId);
     const regions = children.length ? children : focus ? [focus] : [];
     const view = viewFor(focus?.bbox ?? null, this.options.thresholds);
     const layers = activeLayers(this.layers, { drill, scene: view.scene });

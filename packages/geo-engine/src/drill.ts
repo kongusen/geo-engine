@@ -39,6 +39,8 @@ export interface DrillOptions {
   guards?: DrillGuard[];
   /** 允许把叶子作为下钻目标(聚焦单个最小级区域以切换图层,如乡镇 → 乡镇内点位)。默认 false。 */
   allowLeafFocus?: boolean;
+  /** 叶子判定(默认 tree.isLeaf)。引擎据此支持"视图叶子层级":如全国门店视图把省当作叶子。 */
+  isLeaf?: (id: string) => boolean;
 }
 
 type DrillEvents = {
@@ -63,6 +65,10 @@ export class DrillController {
   ) {
     this.focus = options.rootId ?? null;
     this.guards = [...(options.guards ?? [])];
+  }
+
+  private isLeaf(id: string): boolean {
+    return this.options.isLeaf ? this.options.isLeaf(id) : this.tree.isLeaf(id);
   }
 
   get rootId(): string | null {
@@ -151,7 +157,7 @@ export class DrillController {
       return false;
     }
     // 叶子不能作为"下钻"目标(没有下一级可展示),但可以通过 jump 定位(选中叶子时由业务处理)
-    if (direction === "down" && id && this.tree.isLeaf(id) && !this.options.allowLeafFocus) {
+    if (direction === "down" && id && this.isLeaf(id) && !this.options.allowLeafFocus) {
       this.events.emit("blocked", { targetId: id, reason: "leaf" });
       return false;
     }
@@ -171,7 +177,7 @@ export class DrillController {
       return false;
     }
 
-    if (id && this.options.loadChildren && !this.tree.hasLoadedChildren(id) && !this.tree.isLeaf(id)) {
+    if (id && this.options.loadChildren && !this.tree.hasLoadedChildren(id) && !this.isLeaf(id)) {
       this.events.emit("loading", { targetId: id, loading: true });
       try {
         await this.options.loadChildren(id);

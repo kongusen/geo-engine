@@ -1,8 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { GeoSceneOptions, SceneStats } from "../geo-scene";
+import type { GeoSceneOptions, SceneStats, ViewportInset } from "../geo-scene";
 import { SceneHost, type HostedScene, type SceneHostStatus } from "../scene-host";
 
-type Fake = HostedScene & { options: GeoSceneOptions; disposed: boolean; accent: string[]; labels: boolean[]; overlays: string[] };
+type Fake = HostedScene & {
+  options: GeoSceneOptions;
+  disposed: boolean;
+  accent: string[];
+  labels: boolean[];
+  overlays: string[];
+  insets: Array<{ inset: ViewportInset; animate?: boolean }>;
+  highlights: Array<string | null>;
+};
 
 function factory(failures: number[] = []) {
   const created: Fake[] = [];
@@ -15,8 +23,12 @@ function factory(failures: number[] = []) {
       accent: [],
       labels: [],
       overlays: [],
+      insets: [],
+      highlights: [],
       setAccent: (a) => scene.accent.push(a),
       setLabelsVisible: (v) => scene.labels.push(v),
+      setViewportInset: (inset, animate) => scene.insets.push({ inset, animate }),
+      setHighlight: (id) => scene.highlights.push(id),
       registerOverlay: (p) => scene.overlays.push(p.type),
       stats: () => ({ fps: 60 }) as SceneStats,
       dispose: () => void (scene.disposed = true),
@@ -33,13 +45,18 @@ describe("SceneHost", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it("上下文丢失后等待恢复,超时在新画布上重建,并恢复主色 / 标签 / 自定义效果", () => {
+  it("上下文丢失后等待恢复,超时在新画布上重建,并恢复主色 / 标签 / 视口留白 / 外部高亮 / 自定义效果", () => {
     const { created, createScene } = factory();
     const statuses: SceneHostStatus[] = [];
     const host = new SceneHost(base, { createScene, restoreWaitMs: 2000, onStatus: (s) => statuses.push(s) });
     host.setAccent("#f59e0b");
     host.setLabelsVisible(false);
+    host.setViewportInset({ top: 180, right: 416, bottom: 232, left: 416 });
+    host.setHighlight("522633");
     host.registerOverlay({ type: "custom", modes: ["plane"], create: () => ({ dispose() {} }) });
+
+    expect(created[0].insets).toEqual([{ inset: { top: 180, right: 416, bottom: 232, left: 416 }, animate: true }]);
+    expect(created[0].highlights).toEqual(["522633"]);
 
     created[0].options.onContextLost!();
     expect(host.state).toBe("recovering");
@@ -49,7 +66,9 @@ describe("SceneHost", () => {
     expect(created).toHaveLength(2);
     expect(created[0].disposed).toBe(true);
     expect(created[1].options.theme?.accent).toBe("#f59e0b");
+    expect(created[1].options.viewportInset).toEqual({ top: 180, right: 416, bottom: 232, left: 416 });
     expect(created[1].labels).toEqual([false]);
+    expect(created[1].highlights).toEqual(["522633"]);
     expect(created[1].overlays).toEqual(["custom"]);
     expect(statuses).toEqual(["ready", "recovering", "ready"]);
     expect(host.builds).toBe(2);

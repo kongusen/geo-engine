@@ -148,6 +148,7 @@ export class GlobeLayer {
   private readonly lineMaterials: LineMaterial[] = [];
   private patches = new Map<string, RegionPatch>();
   private hovered: string | null = null;
+  private highlighted: string | null = null;
   private opacity = 1;
   private sink = 0;
   private anchor: Position = [0, 0];
@@ -304,6 +305,7 @@ export class GlobeLayer {
       const color = new THREE.Color(point.color ?? this.theme.point);
       const head = new THREE.Mesh(new THREE.SphereGeometry(size * 0.5, 16, 12), new THREE.MeshBasicMaterial({ color }));
       head.position.z = size * 1.2;
+      head.userData.point = point;
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(size * 0.8, size * 1.1, 40),
         new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }),
@@ -335,6 +337,12 @@ export class GlobeLayer {
 
   setHover(id: string | null): void {
     this.hovered = id;
+    this.repaint();
+  }
+
+  setHighlight(id: string | null): void {
+    if (id === this.highlighted) return;
+    this.highlighted = id;
     this.repaint();
   }
 
@@ -405,6 +413,21 @@ export class GlobeLayer {
     return hit.object.userData.regionId ?? null;
   }
 
+  /** 拾取地球表面点位:被海洋球体遮挡(背面)的点位不可选。 */
+  pickPoint(raycaster: THREE.Raycaster): GlobePoint | null {
+    if (!this.pointGroup.visible) return null;
+    const targets: THREE.Object3D[] = [];
+    for (const g of this.pointGroup.children) {
+      for (const child of g.children) {
+        if (child.userData.point) targets.push(child);
+      }
+    }
+    if (!targets.length) return null;
+    const hit = raycaster.intersectObjects([this.ocean, ...targets], false)[0];
+    if (!hit || hit.object === this.ocean) return null;
+    return (hit.object.userData.point as GlobePoint | undefined) ?? null;
+  }
+
   /** 每帧:脉冲动画、背面标签隐藏。 */
   tick(t: number, camera: THREE.Camera): void {
     const center = this.center;
@@ -443,7 +466,7 @@ export class GlobeLayer {
 
   private repaint(): void {
     for (const patch of this.patches.values()) {
-      const hovered = patch.region.id === this.hovered;
+      const hovered = patch.region.id === this.hovered || patch.region.id === this.highlighted;
       const base = patch.drillable ? 0.55 : 0.28;
       patch.mesh.material.opacity = (hovered ? 0.8 : base) * patch.fade * this.opacity;
       patch.mesh.material.color.set(hovered ? this.theme.highlight : this.theme.accent);

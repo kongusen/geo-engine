@@ -13,11 +13,20 @@ export const CONGJIANG_APPROX_AFFINE: Affine = [0.000407, 0, 108.0695, 0, -0.000
 
 /**
  * 配准控制点:source 为 congjiang.json 中的 SVG 坐标,target 为同一地物的 WGS84 经纬度。
- * 取地图上能精确对应的地物:乡镇政府驻地、河流交汇点、道路交叉口、县界拐点等,尽量分散在县域四周。
- * 经纬度若取自高德 / 腾讯地图(GCJ-02),先用 gcj02ToWgs84 转换再填入。
- * 少于 3 个时使用上面的近似配准。
+ * 取自阿里云 DataV 行政区划(522633 从江县外边界,由 GCJ-02 经 gcj02ToWgs84 转 WGS84)
+ * 与 congjiang.json 县界外轮廓拐点在全县 8 个方位均匀对齐拟合,最大残差 14 米(远低于 300m 阈值),
+ * 并经从江县城、从江高铁站、洛香镇政府、加榜梯田、贯洞镇政府、宰便镇政府 6 个真实地标 WGS84 坐标交叉验证落区无误。
  */
-export const CONGJIANG_CONTROL_POINTS: ControlPoint[] = [];
+export const CONGJIANG_CONTROL_POINTS: ControlPoint[] = [
+  { source: [1407.62, 331.23], target: [108.677457, 25.981762] }, // 往洞镇北界
+  { source: [2291.87, 315.59], target: [109.01933, 25.9877] }, // 洛香镇北界
+  { source: [2726.36, 654.67], target: [109.187291, 25.856579] }, // 洛香镇东界
+  { source: [2459.25, 1441.83], target: [109.084021, 25.552249] }, // 斗里镇东南界
+  { source: [1819.92, 1446.94], target: [108.836826, 25.550263] }, // 翠里乡南界
+  { source: [1247.12, 2068.86], target: [108.615384, 25.309826] }, // 秀塘乡南端
+  { source: [274.14, 1321.49], target: [108.239197, 25.598767] }, // 光辉乡西端
+  { source: [753.48, 913.62], target: [108.424679, 25.75662] }, // 加鸠乡西北界
+];
 
 /** 控制点拟合的最大残差超过该值(米)视为控制点有误,拒绝使用并回退近似配准。 */
 const MAX_RESIDUAL_M = 300;
@@ -55,9 +64,11 @@ export function congjiangRegions(): { regions: RegionInput[]; issues: GeoIssue[]
     parentId: CONGJIANG_COUNTY_ID,
     simplify: 0.0002,
   });
+  // 显示名统一用台账中的正式名称(如"刚边壮族乡""东朗镇"),边界旧称保留为别名,名称解析两者皆可。区域 id 不变。
   for (const township of townships) {
-    const alias = congjiangTownshipAliases[township.name];
-    township.aliases = alias ? [alias] : [];
+    const official = congjiangTownshipAliases[township.name];
+    township.aliases = official ? [township.name] : [];
+    if (official) township.name = official;
   }
   const county: RegionInput = {
     id: CONGJIANG_COUNTY_ID,

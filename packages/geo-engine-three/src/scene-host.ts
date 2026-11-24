@@ -1,4 +1,4 @@
-import { GeoScene, type GeoSceneOptions, type SceneStats } from "./geo-scene";
+import { GeoScene, type GeoSceneOptions, type SceneStats, type ViewportInset } from "./geo-scene";
 import type { OverlayPlugin } from "./overlay";
 
 export type SceneHostStatus = "ready" | "recovering" | "failed";
@@ -7,6 +7,8 @@ export type SceneHostStatus = "ready" | "recovering" | "failed";
 export interface HostedScene {
   setAccent(accent: string): void;
   setLabelsVisible(visible: boolean): void;
+  setViewportInset?(inset: ViewportInset, animate?: boolean): void;
+  setHighlight?(id: string | null): void;
   registerOverlay(plugin: OverlayPlugin): void;
   stats(): SceneStats;
   dispose(): void;
@@ -28,7 +30,7 @@ export interface SceneHostOptions {
  * 场景宿主:负责 GeoScene 的生命周期与故障恢复,适合无人值守的大屏。
  * - WebGL 上下文丢失(显卡重置、休眠唤醒)后,在新画布上重建场景;引擎状态(当前层级、图层)不受影响;
  * - 创建失败按退避序列重试,仍失败进入 failed,之后低频重试,成功后自动回到 ready;
- * - 记住主色、标签显隐、自定义效果插件,重建后原样恢复。
+ * - 记住主色、标签显隐、视口留白、外部高亮、自定义效果插件,重建后原样恢复。
  */
 export class SceneHost {
   private current: HostedScene | null = null;
@@ -38,6 +40,8 @@ export class SceneHost {
   private disposed = false;
   private accent: string | undefined;
   private labelsVisible: boolean | undefined;
+  private viewportInset: ViewportInset | undefined;
+  private highlighted: string | null | undefined;
   private readonly overlays: OverlayPlugin[] = [];
   /** 重建次数(含首次创建),用于巡检。 */
   builds = 0;
@@ -47,6 +51,7 @@ export class SceneHost {
     private readonly options: SceneHostOptions = {},
   ) {
     this.accent = sceneOptions.theme?.accent;
+    this.viewportInset = sceneOptions.viewportInset ? { ...sceneOptions.viewportInset } : undefined;
     this.build();
   }
 
@@ -66,6 +71,16 @@ export class SceneHost {
   setLabelsVisible(visible: boolean): void {
     this.labelsVisible = visible;
     this.current?.setLabelsVisible(visible);
+  }
+
+  setViewportInset(inset: ViewportInset, animate = true): void {
+    this.viewportInset = { ...inset };
+    this.current?.setViewportInset?.(inset, animate);
+  }
+
+  setHighlight(id: string | null): void {
+    this.highlighted = id;
+    this.current?.setHighlight?.(id);
   }
 
   registerOverlay(plugin: OverlayPlugin): void {
@@ -97,6 +112,7 @@ export class SceneHost {
       const scene = create({
         ...this.sceneOptions,
         theme: { ...this.sceneOptions.theme, ...(this.accent ? { accent: this.accent } : {}) },
+        ...(this.viewportInset ? { viewportInset: this.viewportInset } : {}),
         onContextLost: () => {
           this.sceneOptions.onContextLost?.();
           if (this.current === scene) this.onLost();
@@ -110,6 +126,7 @@ export class SceneHost {
       this.current = scene;
       for (const plugin of this.overlays) scene.registerOverlay(plugin);
       if (this.labelsVisible !== undefined) scene.setLabelsVisible(this.labelsVisible);
+      if (this.highlighted !== undefined) scene.setHighlight?.(this.highlighted);
       this.attempt = 0;
       this.setStatus("ready");
     } catch (error) {

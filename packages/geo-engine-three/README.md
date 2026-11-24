@@ -74,12 +74,17 @@ new GeoScene({ container, engine, overlays: [myLayer] }); // 也可以调用 sce
 
 - `setAccent(color)`：运行时切换主色。
 - `setLabelsVisible(bool)`：显示或隐藏全部文字标签。
+- `setViewportInset({ top?, right?, bottom?, left? }, animate?)`：动态调整平面视口四周留白（CSS px），在全屏底图存在浮层 HUD 时让 3D 地图居中适配中央开放窗口；`SceneHost` 重建后自动恢复。
+- `setHighlight(regionId | null)`：从外部（如周边排行条悬停）反向高亮并抬升指定区域板块或球面区块；`SceneHost` 重建后自动恢复。
 - `registerOverlay(plugin)`：注册叠加图层插件。
 - `stats()`：运行状态快照（帧率、几何体 / 纹理 / 着色器数、标签 DOM 数等），用于巡检和排查泄漏。
 - `dispose()`：释放场景。
 
 其他选项：
 
+- `viewportInset`：初始平面视口四周留白 `{ top?, right?, bottom?, left? }`（CSS px）。
+- `emptyClick`：平面场景单击空白处行为，`"drill-up"` 上卷一级，默认 `"none"`。
+- `onPointClick` / `onPointHover`：点击或悬停内置 `point` 3D 点位标记（球茎 / 球头 / 地球点位）时的回调。
 - `attribution`：画布右下角的角标文字，例如审图号或“乡镇边界为示意”。公开展示含中国国界的地图必须标注审图号，具体文字由业务侧配置。
 - `overlayZoomFade`：镜头比当前层级默认视距近很多时，叠加效果会淡出，默认 `[0.45, 0.2]`，传 `false` 关闭。效果是按所在层级的尺寸绘制的，从地球一路下钻到县的过程中，地球上的飞线、涟漪会被放大成满屏光斑，这个选项就是为了避免这种情况。
 

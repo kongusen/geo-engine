@@ -103,6 +103,14 @@ export interface GeoSceneOptions {
    * 会被放大成满屏光斑。[完全显示, 完全隐藏] 为 "当前视距 / 默认视距" 的阈值,默认 [0.45, 0.2];false 关闭。
    */
   overlayZoomFade?: [number, number] | false;
+  /** 平面场景单击空白处的行为:"drill-up" 上卷一级;默认 "none"(仅双击空白 / 右键上卷)。 */
+  emptyClick?: "none" | "drill-up";
+  /** 平面视口四周留白(CSS 像素),用于全屏底图四周存在浮层 HUD 时让 3D 板块居中适配中央可见窗口。 */
+  viewportInset?: ViewportInset;
+  /** 点击 3D 点位(球茎 / 球头或地球表面点位)时的回调。 */
+  onPointClick?: (point: PointDatum) => void;
+  /** 悬停 / 离开 3D 点位时的回调。 */
+  onPointHover?: (point: PointDatum | null) => void;
   /**
    * 地图角标(审图号、数据来源、"边界为示意" 等),显示在画布右下角,不可交互。
    * 公开展示含中国国界的地图须有审图号,由业务侧配置。
@@ -112,6 +120,61 @@ export interface GeoSceneOptions {
   onContextLost?: () => void;
   /** 浏览器恢复了上下文。GeoScene 不在原画布上恢复,由宿主决定重建。 */
   onContextRestored?: () => void;
+}
+
+/** 平面视口四周留白(CSS 像素),用于全屏底图四周存在浮层 HUD 时让 3D 板块居中适配中央可见窗口。 */
+export interface ViewportInset {
+  top?: number;
+  right?: number;
+  bottom?: number;
+  left?: number;
+}
+
+export interface SafeAreaNdc {
+  cx: number;
+  cy: number;
+  halfW: number;
+  halfH: number;
+}
+
+const MIN_SAFE_HALF = 0.15;
+
+export function safeAreaNdc(width: number, height: number, inset?: ViewportInset): SafeAreaNdc {
+  const w = Math.max(1, width);
+  const h = Math.max(1, height);
+  const left = Math.max(0, inset?.left ?? 0);
+  const right = Math.max(0, inset?.right ?? 0);
+  const top = Math.max(0, inset?.top ?? 0);
+  const bottom = Math.max(0, inset?.bottom ?? 0);
+  const rawLeft = -1 + (2 * left) / w;
+  const rawRight = 1 - (2 * right) / w;
+  const rawTop = 1 - (2 * top) / h;
+  const rawBottom = -1 + (2 * bottom) / h;
+  const validX = rawRight - rawLeft >= MIN_SAFE_HALF * 2;
+  const validY = rawTop - rawBottom >= MIN_SAFE_HALF * 2;
+  const availLeft = validX ? rawLeft : -1;
+  const availRight = validX ? rawRight : 1;
+  const availTop = validY ? rawTop : 1;
+  const availBottom = validY ? rawBottom : -1;
+  return {
+    cx: (availLeft + availRight) / 2,
+    cy: (availTop + availBottom) / 2,
+    halfW: (availRight - availLeft) / 2,
+    halfH: (availTop - availBottom) / 2,
+  };
+}
+
+function normalizeInset(inset?: ViewportInset): Required<ViewportInset> {
+  return {
+    top: Math.max(0, inset?.top ?? 0),
+    right: Math.max(0, inset?.right ?? 0),
+    bottom: Math.max(0, inset?.bottom ?? 0),
+    left: Math.max(0, inset?.left ?? 0),
+  };
+}
+
+function sameInset(a: Required<ViewportInset>, b: Required<ViewportInset>): boolean {
+  return a.top === b.top && a.right === b.right && a.bottom === b.bottom && a.left === b.left;
 }
 
 /** 运行状态快照(长时间运行巡检 / 内存泄漏排查用)。 */
@@ -252,7 +315,11 @@ export class GeoScene implements SceneAdapter {
   private mapper: PlaneMapper | null = null;
   private view: LevelView | null = null;
   private hovered: string | null = null;
+  private highlighted: string | null = null;
   private selected: string | null = null;
+  private hoveredPoint: PointDatum | null = null;
+  private viewportInset: Required<ViewportInset>;
+  private insetDirty = false;
   private size = { width: 1, height: 1 };
   private disposed = false;
   private frameCount = 0;
@@ -272,6 +339,7 @@ export class GeoScene implements SceneAdapter {
 
   constructor(private readonly options: GeoSceneOptions) {
     const { container } = options;
+    this.viewportInset = normalizeInset(options.viewportInset);
     this.theme = createTheme(options.theme);
     for (const plugin of [...BUILTIN_OVERLAYS, ...(options.overlays ?? [])]) this.overlayPlugins.set(plugin.type, plugin);
     this.R = 100;
@@ -404,6 +472,7 @@ export class GeoScene implements SceneAdapter {
     this.view = next;
     this.hovered = null;
     this.selected = null;
+    this.setHoveredPoint(null);
     const tree = this.options.engine.tree;
     const goingUp =
       frame.direction === "up" ||
@@ -431,6 +500,29 @@ export class GeoScene implements SceneAdapter {
     Object.assign(this.theme, createTheme({ ...this.options.theme, accent, background: this.theme.background }));
     this.globe?.applyTheme();
     if (this.view && this.lastFrame) this.applyData(this.view, this.lastFrame, true);
+  }
+
+  /** 动态调整平面视口四周留白(如周边浮层 HUD 显隐切换),平滑重新居中并缩放地图。 */
+  setViewportInset(inset: ViewportInset, animate = true): void {
+    const next = normalizeInset(inset);
+    if (sameInset(this.viewportInset, next)) return;
+    this.viewportInset = next;
+    if (this.view) this.view.homeDistance = undefined;
+    if (this.busy) {
+      this.insetDirty = true;
+      return;
+    }
+    this.insetDirty = false;
+    if (this.mode === "plane" && this.view) this.flyTo(this.planePose(this.view), animate);
+  }
+
+  /** 从外部(如周边排行榜悬停)反向高亮指定区域板块 / 球面区块。 */
+  setHighlight(id: string | null): void {
+    if (id === this.highlighted) return;
+    const prev = this.highlighted;
+    this.highlighted = id;
+    if (this.mode === "globe") this.globe?.setHighlight(id);
+    else this.refresh([prev, id]);
   }
 
   /** 运行状态快照。 */
@@ -555,8 +647,8 @@ export class GeoScene implements SceneAdapter {
   }
 
   /**
-   * 区域外形装入视口:先按宽高估算距离,再把外形采样点投影到屏幕迭代修正距离与目标点,
-   * 抵消透视下"近大远小"造成的南侧溢出,并让外形在画面中居中。
+   * 区域外形装入视口(支持 viewportInset 安全区留白):先按宽高估算距离,再把外形采样点投影到屏幕迭代修正距离与目标点,
+   * 抵消透视下"近大远小"造成的南侧溢出,并让外形在安全区窗口中居中。
    */
   private planePose(view: LevelView): CameraPose {
     const pitch = ((this.options.pitchDeg ?? 38) * Math.PI) / 180;
@@ -564,14 +656,19 @@ export class GeoScene implements SceneAdapter {
     const fovY = (this.camera.fov * Math.PI) / 180;
     const aspect = this.size.width / this.size.height;
     const fovX = 2 * Math.atan(Math.tan(fovY / 2) * aspect);
-    let distance = Math.max(view.halfWidth / Math.tan(fovX / 2), (view.halfHeight * Math.cos(pitch)) / Math.tan(fovY / 2)) * padding;
+    const safe = safeAreaNdc(this.size.width, this.size.height, this.viewportInset);
+    let distance =
+      Math.max(
+        view.halfWidth / (Math.tan(fovX / 2) * safe.halfW),
+        (view.halfHeight * Math.cos(pitch)) / (Math.tan(fovY / 2) * safe.halfH),
+      ) * padding;
     const [cx, cy] = view.center;
     // 地图坐标 (x, y, z) → 世界坐标 (x, z, -y)
     const target = new THREE.Vector3(cx, view.baseHeight + view.unitHeight, -cy);
     const offset = (d: number) => new THREE.Vector3(0, Math.cos(pitch) * d, Math.sin(pitch) * d);
     const probe = new THREE.PerspectiveCamera(this.camera.fov, aspect, 0.001, 1e6);
     const v = new THREE.Vector3();
-    for (let i = 0; i < 6 && view.fitPoints.length; i++) {
+    for (let i = 0; i < 8 && view.fitPoints.length; i++) {
       probe.position.copy(target).add(offset(distance));
       probe.lookAt(target);
       probe.updateMatrixWorld();
@@ -586,11 +683,11 @@ export class GeoScene implements SceneAdapter {
         minY = Math.min(minY, v.y);
         maxY = Math.max(maxY, v.y);
       }
-      const span = Math.max((maxX - minX) / 2, (maxY - minY) / 2) * padding;
+      const span = Math.max((maxX - minX) / (2 * safe.halfW), (maxY - minY) / (2 * safe.halfH)) * padding;
       const halfViewY = distance * Math.tan(fovY / 2);
-      target.x += ((maxX + minX) / 2) * halfViewY * aspect;
-      target.z -= (((maxY + minY) / 2) * halfViewY) / Math.cos(pitch);
-      distance *= span;
+      target.x += ((maxX + minX) / 2 - safe.cx) * halfViewY * aspect;
+      target.z -= (((maxY + minY) / 2 - safe.cy) * halfViewY) / Math.cos(pitch);
+      if (span > 0) distance *= span;
     }
     return { position: target.clone().add(offset(distance)), target, up: new THREE.Vector3(0, 1, 0) };
   }
@@ -598,8 +695,9 @@ export class GeoScene implements SceneAdapter {
   // ── 地球 ↔ 平面 ────────────────────────────────────────────────────────
 
   private hasChildren(id: string): boolean {
-    const tree = this.options.engine.tree;
-    return tree.children(id).length > 0 || !!tree.get(id)?.expandable;
+    const engine = this.options.engine;
+    if (engine.isLeaf(id)) return false;
+    return engine.tree.children(id).length > 0 || !!engine.tree.get(id)?.expandable;
   }
 
   private syncGlobe(frame: EngineFrame): void {
@@ -692,6 +790,7 @@ export class GeoScene implements SceneAdapter {
   private toPlane(frame: EngineFrame, anchor: Position): void {
     const globe = this.globe!;
     this.busy = true;
+    this.setHoveredPoint(null);
     this.setHovered(null);
     const T = (this.options.transitionMs ?? 1200) * 1.9;
     const start = globe.getAnchor();
@@ -748,6 +847,7 @@ export class GeoScene implements SceneAdapter {
     const globe = this.globe!;
     const view = this.view;
     this.busy = true;
+    this.setHoveredPoint(null);
     this.setHovered(null);
     const T = (this.options.transitionMs ?? 1200) * 1.9;
     globe.setOverlayVisible(true);
@@ -803,6 +903,10 @@ export class GeoScene implements SceneAdapter {
     const next = this.pending;
     this.pending = null;
     if (next) this.update(next);
+    if (this.insetDirty && !this.busy) {
+      this.insetDirty = false;
+      if (this.mode === "plane" && this.view) this.flyTo(this.planePose(this.view), true);
+    }
   }
 
   // ── 构建 ───────────────────────────────────────────────────────────────
@@ -1088,7 +1192,7 @@ export class GeoScene implements SceneAdapter {
       const color = new THREE.Color(point.color ?? this.theme.point);
       const g = new THREE.Group();
       g.name = `point:${point.id}`;
-      g.userData = { plateId: plate.region.id, phase: hashPhase(point.id) };
+      g.userData = { plateId: plate.region.id, phase: hashPhase(point.id), point };
       const stemHeight = view.unitHeight * 2.2;
       const stem = new THREE.Mesh(
         new THREE.CylinderGeometry(size * 0.12, size * 0.12, stemHeight, 8),
@@ -1096,8 +1200,10 @@ export class GeoScene implements SceneAdapter {
       );
       stem.rotation.x = Math.PI / 2;
       stem.position.z = stemHeight / 2;
+      stem.userData.point = point;
       const head = new THREE.Mesh(new THREE.SphereGeometry(size * 0.42, 16, 12), new THREE.MeshBasicMaterial({ color }));
       head.position.z = stemHeight;
+      head.userData.point = point;
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(size * 0.7, size, 40),
         new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }),
@@ -1334,7 +1440,7 @@ export class GeoScene implements SceneAdapter {
 
   private paint(plate: Plate, view: LevelView, animate: boolean): void {
     const [top, side] = plate.mesh.material;
-    const highlighted = plate.region.id === this.hovered || plate.region.id === this.selected;
+    const highlighted = plate.region.id === this.hovered || plate.region.id === this.selected || plate.region.id === this.highlighted;
     const target = highlighted ? plate.color.clone().lerp(new THREE.Color(this.theme.highlight), 0.4) : plate.color;
     const lift = highlighted ? view.unitHeight * 0.7 : 0;
     side.uniforms.uTop.value = new THREE.Color(highlighted ? this.theme.highlight : this.theme.accent);
@@ -1380,13 +1486,24 @@ export class GeoScene implements SceneAdapter {
     }
   }
 
+  private updateCursor(): void {
+    this.renderer.domElement.style.cursor = this.hovered || this.hoveredPoint ? "pointer" : this.mode === "globe" ? "grab" : "";
+  }
+
+  private setHoveredPoint(point: PointDatum | null): void {
+    if ((point?.id ?? null) === (this.hoveredPoint?.id ?? null)) return;
+    this.hoveredPoint = point;
+    this.updateCursor();
+    this.options.onPointHover?.(point);
+  }
+
   private setHovered(id: string | null): void {
     if (id === this.hovered) return;
     const prev = this.hovered;
     this.hovered = id;
     if (this.mode === "globe") this.globe?.setHover(id);
     else this.refresh([prev, id]);
-    this.renderer.domElement.style.cursor = id ? "pointer" : this.mode === "globe" ? "grab" : "";
+    this.updateCursor();
     this.options.engine.hover(id);
   }
 
@@ -1399,12 +1516,34 @@ export class GeoScene implements SceneAdapter {
 
   // ── 交互 ───────────────────────────────────────────────────────────────
 
-  private pick(event: MouseEvent): string | null {
-    if (this.busy) return null;
+  private setRay(event: MouseEvent): boolean {
+    if (this.busy) return false;
     const rect = this.renderer.domElement.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return false;
     // 大屏画布整体按比例缩放:用实际显示尺寸换算 NDC
     this.pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.camera);
+    return true;
+  }
+
+  private pickPoint(event: MouseEvent): PointDatum | null {
+    if (!this.options.onPointClick && !this.options.onPointHover) return null;
+    if (!this.setRay(event)) return null;
+    if (this.mode === "globe") return this.globe?.pickPoint(this.raycaster) ?? null;
+    if (!this.view || !this.view.points.visible) return null;
+    const targets: THREE.Object3D[] = [];
+    for (const g of this.view.points.children) {
+      for (const child of g.children) {
+        if (child.userData.point) targets.push(child);
+      }
+    }
+    if (!targets.length) return null;
+    const hit = this.raycaster.intersectObjects(targets, false)[0];
+    return (hit?.object.userData.point as PointDatum | undefined) ?? null;
+  }
+
+  private pick(event: MouseEvent): string | null {
+    if (!this.setRay(event)) return null;
     if (this.mode === "globe") return this.globe?.pick(this.raycaster) ?? null;
     if (!this.view) return null;
     const meshes = [...this.view.plates.values()].map((p) => p.mesh);
@@ -1425,9 +1564,13 @@ export class GeoScene implements SceneAdapter {
         return;
       }
     }
+    if (this.options.onPointClick || this.options.onPointHover) this.setHoveredPoint(this.pickPoint(event));
     this.setHovered(this.pick(event));
   };
-  private onPointerLeave = () => this.setHovered(null);
+  private onPointerLeave = () => {
+    this.setHoveredPoint(null);
+    this.setHovered(null);
+  };
   private onPointerDown = (event: PointerEvent) => {
     this.pointerDown = { x: event.clientX, y: event.clientY };
     if (this.mode === "globe") this.drag = { x: event.clientX, y: event.clientY, moved: false };
@@ -1437,11 +1580,20 @@ export class GeoScene implements SceneAdapter {
   };
   private onClick = (event: MouseEvent) => {
     if (this.pointerDown && Math.hypot(event.clientX - this.pointerDown.x, event.clientY - this.pointerDown.y) > 6) return;
+    if (this.options.onPointClick) {
+      const point = this.pickPoint(event);
+      if (point) {
+        this.options.onPointClick(point);
+        return;
+      }
+    }
     const id = this.pick(event);
     if (id) void this.options.engine.activate(id);
+    // 平面场景点空白处上卷(大屏 / 触屏上比右键、双击更易发现)
+    else if (this.mode === "plane" && this.options.emptyClick === "drill-up") void this.options.engine.drill.drillUp();
   };
   private onDoubleClick = (event: MouseEvent) => {
-    if (this.mode === "plane" && !this.pick(event)) void this.options.engine.drill.drillUp();
+    if (this.mode === "plane" && !(this.options.onPointClick && this.pickPoint(event)) && !this.pick(event)) void this.options.engine.drill.drillUp();
   };
   private onWebglLost = (event: Event) => {
     // 阻止默认行为,浏览器才会在条件允许时发出 restored
@@ -1484,7 +1636,7 @@ export class GeoScene implements SceneAdapter {
 
     if (this.globe && this.mode === "globe") {
       const speed = (this.options.globe as GlobeOptions).autoRotateDegPerSec ?? 6;
-      if (speed && !this.busy && !this.drag && !this.hovered) {
+      if (speed && !this.busy && !this.drag && !this.hovered && !this.highlighted && !this.hoveredPoint) {
         const [lng, lat] = this.globe.getAnchor();
         this.setAnchor([wrapLng(lng + speed * dt), lat], 0);
       }
