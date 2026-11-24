@@ -147,3 +147,7 @@ git tag v0.2.0 && git push origin main v0.2.0
 - 预发布版本（如 `v0.2.0-beta.1`）发布到 npm 的 `next` dist-tag，正式版发布到 `latest`。
 - 已经发布过的版本会跳过，所以对同一 tag 重跑工作流是安全的。npm 上的版本发布后不能覆盖，内容有改动就升版本号。
 - 发布使用 npm trusted publishing（GitHub OIDC），仓库里不保存任何 npm token。首次发布前的一次性配置见 [RELEASING.md](RELEASING.md)。
+
+## 许可
+
+[MIT](LICENSE)

@@ -12,6 +12,7 @@
     "3d-map",
     "webgl"
   ],
+  "license": "MIT",
   "homepage": "https://github.com/kongusen/geo-engine/tree/main/packages/three#readme",
   "bugs": "https://github.com/kongusen/geo-engine/issues",
   "repository": {
@@ -49,7 +50,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "publishConfig": {
     "access": "public",

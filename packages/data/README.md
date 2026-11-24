@@ -264,3 +264,7 @@ interface TileSource {
 | 抽稀 | `simplifyRing` / `simplifyPolygons` |
 | 边界线 | `boundaryLines`（共享边只出一次）、`outerOutline`（合并后的外轮廓） |
 | 格式 | `topologyToFeatures`、`isTopology`、`toFeatures`、`toRegion` |
+
+## 许可
+
+[MIT](LICENSE)

@@ -15,5 +15,6 @@
     "soak": "pnpm --filter @geodive/three soak",
     "pack:to": "node scripts/pack.mjs",
     "version:set": "node scripts/set-version.mjs"
-  }
+  },
+  "license": "MIT"
 }

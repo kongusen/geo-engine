@@ -220,3 +220,7 @@ interface EngineFrame {
 | 聚合 | `clusterPoints(points, cellSize, project?)`：网格聚合 |
 | 热力 | `densityGrid(points, bounds, cols, rows, radius)`：高斯核密度网格 |
 | 事件 | `Emitter` |
+
+## 许可
+
+[MIT](LICENSE)

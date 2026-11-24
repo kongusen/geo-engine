@@ -12,6 +12,7 @@
     "natural-earth",
     "tianditu"
   ],
+  "license": "MIT",
   "homepage": "https://github.com/kongusen/geo-engine/tree/main/packages/data#readme",
   "bugs": "https://github.com/kongusen/geo-engine/issues",
   "repository": {
@@ -36,7 +37,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "sideEffects": false,
   "publishConfig": {
