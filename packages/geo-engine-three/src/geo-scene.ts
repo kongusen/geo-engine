@@ -9,6 +9,7 @@ import { LineGeometry } from "three/addons/lines/LineGeometry.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import {
   angularDistance,
+  cameraDistance,
   outerOutline,
   classify,
   easeInOutCubic,
@@ -26,7 +27,7 @@ import {
 import { Animator, easeOutBack, easeOutCubic } from "./animator";
 import { GlobeLayer, type GlobeOptions } from "./globe";
 import { applyLineMorph, applyMorph, bindMorphUniforms, createMorphUniforms, MORPH_GLSL, type MorphUniforms } from "./morph";
-import { createPlaneMapper, linePositions, outlinePositions, regionShapes, type PlaneMapper } from "./shapes";
+import { createPlaneMapper, linePositions, outlinePositions, plateGeometry, regionShapes, type PlaneMapper } from "./shapes";
 import { createTheme, mixColor, type SceneTheme } from "./theme";
 import { makeLabel, type OverlayContext, type OverlayInstance, type OverlayMode, type OverlayPlugin } from "./overlay";
 import { flowLayer } from "./effects/flow";
@@ -34,9 +35,10 @@ import { barLayer } from "./effects/bar";
 import { heatLayer } from "./effects/heat";
 import { rippleLayer } from "./effects/ripple";
 import { clusterLayer } from "./effects/cluster";
+import { basemapLayer } from "./effects/basemap";
 
-/** 内置效果插件:飞线、柱体、热力、涟漪、聚合。 */
-export const BUILTIN_OVERLAYS: OverlayPlugin[] = [flowLayer, barLayer, heatLayer, rippleLayer, clusterLayer] as OverlayPlugin[];
+/** 内置效果插件:飞线、柱体、热力、涟漪、聚合、瓦片底图。 */
+export const BUILTIN_OVERLAYS: OverlayPlugin[] = [flowLayer, barLayer, heatLayer, rippleLayer, clusterLayer, basemapLayer] as OverlayPlugin[];
 
 // ── 图层数据约定(LayerSpec.data) ─────────────────────────────────────────
 
@@ -201,6 +203,8 @@ interface OverlayEntry {
   transition: number;
   zoom: number;
   applied: number;
+  /** 是否参与视距淡出(插件声明 zoomFade: false 的不参与,如底图)。 */
+  zoomFade: boolean;
 }
 
 /** @deprecated 使用 GeoSceneOptions */
@@ -331,6 +335,8 @@ export class GeoScene implements SceneAdapter {
   private readonly globeOverlays = new Map<string, OverlayEntry>();
   /** 平面内容在地球上对应的顶层区域(上卷回地球时它的球面块淡入)。 */
   private planeTopId: string | null = null;
+  /** 地球模式下当前对准的区域(undefined 表示尚未对准过);大区域(如美国、俄罗斯)聚焦时仍停留在地球模式。 */
+  private globeFocusId: string | null | undefined = undefined;
   private pointerDown: { x: number; y: number } | null = null;
   private contextLost = false;
   private attribution: HTMLDivElement | null = null;
@@ -358,9 +364,10 @@ export class GeoScene implements SceneAdapter {
 
     if (getComputedStyle(container).position === "static") container.style.position = "relative";
     container.append(this.renderer.domElement, this.labelRenderer.domElement);
-    if (options.attribution) {
+    {
+      // 角标:固定文字(options.attribution)+ 帧中的数据版权 / 底图审图号,随层级更新
       this.attribution = document.createElement("div");
-      this.attribution.textContent = options.attribution;
+      this.attribution.textContent = options.attribution ?? "";
       this.attribution.dataset.geoAttribution = "true";
       Object.assign(this.attribution.style, {
         position: "absolute",
@@ -425,6 +432,7 @@ export class GeoScene implements SceneAdapter {
   update(frame: EngineFrame): void {
     if (this.disposed) return;
     this.lastFrame = frame;
+    this.renderAttribution(frame);
     if (this.busy) {
       this.pending = frame;
       return;
@@ -437,7 +445,8 @@ export class GeoScene implements SceneAdapter {
         this.mode = "globe";
         this.globe.group.visible = true;
         this.applyPose(this.globePose());
-      }
+        this.focusGlobe(frame, false);
+      } else this.focusGlobe(frame, true);
       return;
     }
 
@@ -598,6 +607,45 @@ export class GeoScene implements SceneAdapter {
     };
   }
 
+  /**
+   * 地球模式下对准聚焦区域:转动地球使区域中心朝向相机,并按区域角半径拉近(不远于整球视距)。
+   * 聚焦回到顶层时恢复整球视距。只在聚焦变化时执行,不打断用户拖拽后的视角。
+   */
+  private focusGlobe(frame: EngineFrame, animate: boolean): void {
+    const globe = this.globe;
+    const id = frame.drill.focusId;
+    if (!globe || id === this.globeFocusId) return;
+    this.globeFocusId = id;
+    const home = this.globePose();
+    let to = home;
+    const center = id ? frame.view.center : null;
+    if (center) {
+      const aspect = this.size.width / this.size.height;
+      const fit = cameraDistance(frame.view.angularRadius, this.camera.fov, aspect, 1.15, "globe") * this.R;
+      const distance = Math.min(home.position.distanceTo(home.target), fit);
+      to = { position: new THREE.Vector3(0, -this.R + distance, 0), target: home.target.clone(), up: home.up.clone() };
+    }
+    this.animator.cancel("camera");
+    if (!animate) {
+      if (center) this.setAnchor(center, 0);
+      this.applyPose(to);
+      return;
+    }
+    const from = this.currentPose();
+    const start = globe.getAnchor();
+    this.animator.add(
+      {
+        duration: Math.max(this.options.transitionMs ?? 1200, this.zoomDuration(this.options.transitionMs ?? 1200, from, to)),
+        ease: easeInOutCubic,
+        update: (k) => {
+          if (center) this.setAnchor(greatCircle(start, center, k), 0);
+          this.applyPose(this.lerpPose(from, to, k));
+        },
+      },
+      "camera",
+    );
+  }
+
   private applyPose(pose: CameraPose): void {
     this.camera.position.copy(pose.position);
     this.cameraTarget.copy(pose.target);
@@ -710,6 +758,13 @@ export class GeoScene implements SceneAdapter {
 
   // ── 叠加图层 ───────────────────────────────────────────────────────────
 
+  private renderAttribution(frame: EngineFrame): void {
+    if (!this.attribution) return;
+    const text = [...new Set([this.options.attribution, ...(frame.attributions ?? [])].filter((a): a is string => !!a))].join(" · ");
+    if (this.attribution.textContent !== text) this.attribution.textContent = text;
+    this.attribution.style.display = text ? "" : "none";
+  }
+
   private globeContext(): OverlayContext {
     const globe = this.globe!;
     const R = this.R;
@@ -730,6 +785,9 @@ export class GeoScene implements SceneAdapter {
       planeXY: () => null,
       bounds: null,
       maxSurface: 0,
+      baseHeight: 0,
+      unproject: () => null,
+      camera: () => this.camera,
       region: (id) => this.options.engine.tree.get(id),
       resolution: () => this.size,
       label: (text, style) => makeLabel(this.theme, text, style),
@@ -756,6 +814,9 @@ export class GeoScene implements SceneAdapter {
       planeXY: (p) => mapper.project(p),
       bounds: view.bounds,
       maxSurface: view.baseHeight + Math.max(0, ...plates.map((p) => p.height)),
+      baseHeight: view.baseHeight,
+      unproject: (x, y) => mapper.unproject(x, y),
+      camera: () => this.camera,
       region: (id) => this.options.engine.tree.get(id),
       resolution: () => this.size,
       label: (text, style) => makeLabel(this.theme, text, style),
@@ -776,7 +837,8 @@ export class GeoScene implements SceneAdapter {
       if (existing && existing.type === spec.type && existing.instance.update?.(spec)) continue;
       existing?.instance.dispose();
       try {
-        const entry: OverlayEntry = { type: spec.type, instance: this.overlayPlugins.get(spec.type)!.create(ctx, spec), transition: 1, zoom: 1, applied: 1 };
+        const plugin = this.overlayPlugins.get(spec.type)!;
+        const entry: OverlayEntry = { type: spec.type, instance: plugin.create(ctx, spec), transition: 1, zoom: 1, applied: 1, zoomFade: plugin.zoomFade !== false };
         // 重建的效果继承当前的淡出状态(如转场中途数据刷新)
         if (existing) this.setEntryOpacity(entry, existing.transition, existing.zoom);
         entries.set(spec.id, entry);
@@ -788,6 +850,7 @@ export class GeoScene implements SceneAdapter {
   }
 
   private toPlane(frame: EngineFrame, anchor: Position): void {
+    this.globeFocusId = undefined;
     const globe = this.globe!;
     this.busy = true;
     this.setHoveredPoint(null);
@@ -893,6 +956,9 @@ export class GeoScene implements SceneAdapter {
         if (view) this.disposeView(view);
         this.view = null;
         this.mode = "globe";
+        // 转场停在整球视距;目标若是大区域(仍在地球模式),接着对准它
+        this.globeFocusId = null;
+        if (this.lastFrame?.view.scene === "globe") this.focusGlobe(this.lastFrame, true);
         this.finishTransition();
       },
     });
@@ -1006,7 +1072,8 @@ export class GeoScene implements SceneAdapter {
     for (const region of frame.regions) {
       const shapes = regionShapes(region.polygons, mapper);
       if (!shapes.length) continue;
-      const geometry = new THREE.ExtrudeGeometry(shapes, { depth: 1, bevelEnabled: false });
+      // 细小部件(岛礁、飞地)按尺寸降低挤出深度,避免成为细针
+      const geometry = plateGeometry(shapes, unitHeight * 4);
       const top = applyMorph(new THREE.MeshBasicMaterial({ color: this.theme.plateEmpty, transparent: true, opacity: 0.96 }), morph);
       const mesh = new THREE.Mesh(geometry, [top, this.sideMaterial(this.theme.accent, this.theme.side, 0.95, morph)]) as Plate["mesh"];
       mesh.position.z = baseHeight;
@@ -1381,7 +1448,7 @@ export class GeoScene implements SceneAdapter {
     if (this.globe && this.globeOverlays.size) {
       const home = this.globePose();
       const k = factor(home.position.distanceTo(home.target));
-      for (const entry of this.globeOverlays.values()) this.setEntryOpacity(entry, entry.transition, k);
+      for (const entry of this.globeOverlays.values()) this.setEntryOpacity(entry, entry.transition, entry.zoomFade ? k : 1);
     }
     const view = this.view;
     if (view?.overlays.size) {
@@ -1390,7 +1457,7 @@ export class GeoScene implements SceneAdapter {
         return pose.position.distanceTo(pose.target);
       })();
       const k = factor(view.homeDistance);
-      for (const entry of view.overlays.values()) this.setEntryOpacity(entry, entry.transition, k);
+      for (const entry of view.overlays.values()) this.setEntryOpacity(entry, entry.transition, entry.zoomFade ? k : 1);
     }
   }
 
@@ -1636,7 +1703,8 @@ export class GeoScene implements SceneAdapter {
 
     if (this.globe && this.mode === "globe") {
       const speed = (this.options.globe as GlobeOptions).autoRotateDegPerSec ?? 6;
-      if (speed && !this.busy && !this.drag && !this.hovered && !this.highlighted && !this.hoveredPoint) {
+      // 聚焦某个区域时不自转,否则会把它转走
+      if (speed && !this.busy && !this.drag && !this.hovered && !this.highlighted && !this.hoveredPoint && !this.globeFocusId) {
         const [lng, lat] = this.globe.getAnchor();
         this.setAnchor([wrapLng(lng + speed * dt), lat], 0);
       }

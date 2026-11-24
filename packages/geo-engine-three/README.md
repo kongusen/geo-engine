@@ -36,8 +36,41 @@ pnpm playground   # http://localhost:5199(在仓库根目录执行)
 | `heat` | 平面 | `{ points: [{ position, weight? }], radius?, colors? }`：核密度热力图 |
 | `ripple` | 平面 / 地球 | `{ points: [{ position, color?, label? }], rings?, speed? }`：扩散波纹（告警、强调） |
 | `cluster` | 平面 | `{ points: [{ id, position, name? }], cellSize? }`：点位聚合，下钻后自然展开 |
+| `basemap` | 平面 | `{ sources: TileSource[], style?, extent?, zoomOffset?, maxTiles? }`：栅格瓦片底图，见下文 |
 
 尺寸参数都相对当前层级的"特征长度"计算，所以同一套参数在全国、县、乡镇各级的视觉比例一致。
+
+## 底图
+
+在平面场景的板块下方铺一层在线地图瓦片。瓦片来源在 `@yaoyu/geo-data` 中定义：
+
+```ts
+import { tianditu, amapTiles, xyzTiles } from "@yaoyu/geo-engine";
+import { basemap } from "@yaoyu/geo-engine-three";
+
+engine.setLayers([
+  basemap(tianditu({ key, attribution: "© 天地图 GS(XXXX)XXXX号" }), {   // 底图 + 注记
+    style: { invert: 1, grayscale: 1, tint: "accent", tintAmount: 0.55, brightness: 0.85 },
+  }),
+  { id: "labels", type: "label" },
+]);
+```
+
+- **服务商**：
+  - `tianditu()`：天地图，默认使用。可选矢量 / 影像 / 地形，以及球面墨卡托（`w`）或经纬度（`c`）瓦片。
+  - `amapTiles()`：高德，GCJ-02 坐标，会逐顶点纠偏到 WGS84。
+  - `xyzTiles(url)`：任意 XYZ 服务。
+  - 也可以通过 `TileSource.load` 自己接管请求，例如加鉴权、读离线包、自绘瓦片。
+- **级别与范围**：缩放级别按屏幕分辨率自动选择，瓦片只覆盖视野内、当前层级范围 `extent` 倍以内的区域。另外会多加载一层粗三级的瓦片垫底，精细瓦片没到之前先显示模糊版本。
+- **缓存**：纹理在各层级之间共享（LRU 上限 320 张），下钻、上卷都不会重复下载。
+- **着色**（`style`）：
+  - `invert` / `grayscale` / `tint` / `brightness`：把底图调成和大屏主题协调的色调。
+  - `maxLuminance`：亮度上限，缺省 0.6。它让底图的亮度低于泛光阈值，避免浅色底图整片过曝。场景关闭了泛光的话，可以设为 1。
+- **转场**：底图只在平面场景显示，变形转场期间随层级淡出。镜头拉近时不会像其他效果那样淡出（插件声明了 `zoomFade: false`）。
+- **角标**：
+  - `basemap()` 会把各图层的 `attribution` 带到图层规格上，引擎汇总进 `frame.attributions`，场景右下角的角标自动显示。
+  - 角标内容是 `attribution` 选项，加上区域数据源和底图的版权信息。
+  - 对外公开展示时，审图号以服务商当年公布的为准，由业务侧填写。
 
 ## 自定义效果插件
 
@@ -54,6 +87,7 @@ const myLayer = defineOverlay<{ items: ... }>({
     // ctx.up(lngLat)                该点的向上方向
     // ctx.scale / ctx.unitHeight    尺寸基准
     // ctx.label(text)               文字标签（自动参与避让）
+    // ctx.camera() / ctx.unproject 相机与平面坐标反算(按视野取数据时用)
     return {
       tick(t, dt) {},       // 每帧调用
       setOpacity(k) {},     // 转场淡入淡出
@@ -85,7 +119,7 @@ new GeoScene({ container, engine, overlays: [myLayer] }); // 也可以调用 sce
 - `viewportInset`：初始平面视口四周留白 `{ top?, right?, bottom?, left? }`（CSS px）。
 - `emptyClick`：平面场景单击空白处行为，`"drill-up"` 上卷一级，默认 `"none"`。
 - `onPointClick` / `onPointHover`：点击或悬停内置 `point` 3D 点位标记（球茎 / 球头 / 地球点位）时的回调。
-- `attribution`：画布右下角的角标文字，例如审图号或“乡镇边界为示意”。公开展示含中国国界的地图必须标注审图号，具体文字由业务侧配置。
+- `attribution`：画布右下角角标的固定文字（会与帧中的数据版权、底图版权合并显示），例如审图号或“乡镇边界为示意”。公开展示含中国国界的地图必须标注审图号，具体文字由业务侧配置。
 - `overlayZoomFade`：镜头比当前层级默认视距近很多时，叠加效果会淡出，默认 `[0.45, 0.2]`，传 `false` 关闭。效果是按所在层级的尺寸绘制的，从地球一路下钻到县的过程中，地球上的飞线、涟漪会被放大成满屏光斑，这个选项就是为了避免这种情况。
 
 ## 大屏部署：用 SceneHost 挂载
@@ -122,3 +156,4 @@ pnpm soak --minutes 600          # 长时间运行巡检，上线前在大屏主
 - 点击可下钻区域时下钻；点击叶子区域时选中（`engine.on("select")`）。
 - 右键返回上一级；在平面中双击空白处也返回上一级。
 - 地球模式下可拖拽旋转，无人操作时自转。
+- 大区域（角半径超过 `globeAboveDegrees`，如美国、俄罗斯）聚焦后仍停留在地球模式。此时地球会转到区域中心并拉近，聚焦期间停止自转；回到顶层时恢复整球视距。区域中心取外接矩形中心，若它落在区域之外（例如美国本土加阿拉斯加、夏威夷，外接矩形中心在太平洋），改用质心。

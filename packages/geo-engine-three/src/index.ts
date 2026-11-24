@@ -11,3 +11,4 @@ export * from "./effects/heat";
 export * from "./effects/ripple";
 export * from "./effects/cluster";
 export * from "./scene-host";
+export * from "./effects/basemap";

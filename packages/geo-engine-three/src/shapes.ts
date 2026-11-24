@@ -1,4 +1,4 @@
-import { Path, Shape, Vector2 } from "three";
+import { BufferAttribute, BufferGeometry, ExtrudeGeometry, Path, Shape, Vector2 } from "three";
 import { createLocalProjection, type MultiPolygonCoords, type Position, type Ring } from "@yaoyu/geo-engine";
 
 /**
@@ -9,6 +9,8 @@ export interface PlaneMapper {
   center: Position;
   unitsPerRadian: number;
   project(p: Position): [number, number];
+  /** 平面坐标 → 经纬度。 */
+  unproject(x: number, y: number): Position;
 }
 
 export function createPlaneMapper(center: Position, unitsPerRadian: number): PlaneMapper {
@@ -19,6 +21,9 @@ export function createPlaneMapper(center: Position, unitsPerRadian: number): Pla
     project(p) {
       const [x, y] = projection.forward(p);
       return [x * unitsPerRadian, y * unitsPerRadian];
+    },
+    unproject(x, y) {
+      return projection.inverse([x / unitsPerRadian, y / unitsPerRadian]);
     },
   };
 }
@@ -76,4 +81,52 @@ export function linePositions(lines: Position[][], mapper: PlaneMapper, z: numbe
       }
       return flat;
     });
+}
+
+/**
+ * 板块挤出几何(深度 1,由 mesh.scale.z 决定实际高度)。
+ * 尺寸小于 fullSize 的部件(细小岛礁、飞地)按尺寸比例降低挤出深度(不低于 minDepth),
+ * 否则整块按同一高度挤出后,小部件会变成又细又高的"针"。材质分组(0 顶/底面、1 侧面)保持不变。
+ */
+export function plateGeometry(shapes: Shape[], fullSize: number, minDepth = 0.12): BufferGeometry {
+  const buckets = new Map<number, Shape[]>();
+  for (const shape of shapes) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of shape.getPoints()) {
+      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+      minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+    }
+    const size = Math.max(maxX - minX, maxY - minY);
+    // 量化到 0.1,同一深度的部件合并成一次挤出
+    const depth = size >= fullSize ? 1 : Math.max(minDepth, Math.round((size / fullSize) * 10) / 10);
+    buckets.set(depth, [...(buckets.get(depth) ?? []), shape]);
+  }
+  const parts = [...buckets].map(([depth, group]) => new ExtrudeGeometry(group, { depth, bevelEnabled: false }));
+  if (parts.length === 1) return parts[0];
+  const merged = mergeKeepingGroups(parts);
+  for (const part of parts) part.dispose();
+  return merged;
+}
+
+/** 合并非索引几何,保留各自的材质分组索引(BufferGeometryUtils.mergeGeometries 会按几何重新编组)。 */
+function mergeKeepingGroups(parts: BufferGeometry[]): BufferGeometry {
+  const out = new BufferGeometry();
+  const names = Object.keys(parts[0].attributes);
+  const total = parts.reduce((n, g) => n + g.attributes.position.count, 0);
+  for (const name of names) {
+    const itemSize = parts[0].attributes[name].itemSize;
+    const array = new Float32Array(total * itemSize);
+    let offset = 0;
+    for (const g of parts) {
+      array.set(g.attributes[name].array as Float32Array, offset * itemSize);
+      offset += g.attributes[name].count;
+    }
+    out.setAttribute(name, new BufferAttribute(array, itemSize));
+  }
+  let offset = 0;
+  for (const g of parts) {
+    for (const group of g.groups) out.addGroup(offset + group.start, group.count, group.materialIndex);
+    offset += g.attributes.position.count;
+  }
+  return out;
 }

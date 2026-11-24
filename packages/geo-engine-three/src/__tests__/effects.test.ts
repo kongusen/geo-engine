@@ -13,6 +13,9 @@ const base = {
   planeXY: () => null,
   bounds: null,
   maxSurface: 0,
+  baseHeight: 0,
+  unproject: () => null,
+  camera: () => new THREE.PerspectiveCamera(),
   region: () => undefined,
   resolution: () => ({ width: 1, height: 1 }),
   label: () => {

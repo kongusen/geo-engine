@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Geo Engine Lazy Sources</title>
+<style>
+  :root { color-scheme: dark; --accent: #38bdf8; }
+  body { margin: 0; background: #050b16; color: #e6f1ff; font: 14px/1.4 "PingFang SC", system-ui, sans-serif; display: grid; grid-template-columns: 1fr 280px; height: 100vh; }
+  #map { position: relative; min-width: 0; }
+  aside { border-left: 1px solid #1e293b; padding: 14px; overflow: auto; background: #07111f; }
+  h2 { font-size: 13px; color: #94a3b8; margin: 16px 0 8px; font-weight: 600; letter-spacing: .06em; }
+  button { display: block; width: 100%; margin: 4px 0; padding: 7px 10px; text-align: left; color: #e6f1ff; background: #0f1b2d; border: 1px solid #1e3a4c; border-radius: 6px; cursor: pointer; font: inherit; }
+  button:hover { border-color: var(--accent); }
+  form { display: flex; gap: 6px; }
+  input { flex: 1; min-width: 0; padding: 7px 10px; color: #e6f1ff; background: #0f1b2d; border: 1px solid #1e3a4c; border-radius: 6px; font: inherit; }
+  form button { width: auto; margin: 0; }
+  .hud { position: absolute; left: 14px; z-index: 5; padding: 6px 12px; background: rgba(2,6,23,.8); border: 1px solid #1e3a4c; border-radius: 6px; }
+  #crumbs { top: 12px; }
+  #status { top: 52px; color: #94a3b8; }
+  #status:empty, #issues:empty { display: none; }
+  #status[data-kind="error"] { color: #fca5a5; border-color: #7f1d1d; }
+  .meta { font-size: 12px; color: #94a3b8; word-break: break-all; }
+  #issues { color: #fcd34d; }
+</style>
+</head>
+<body>
+<div id="map">
+  <div id="crumbs" class="hud">地球</div>
+  <div id="status" class="hud"></div>
+</div>
+<aside>
+  <h2>跳转(未加载的区域会自动定位)</h2>
+  <div id="jumps"></div>
+  <h2>底图(?tk=天地图 key 启用天地图)</h2>
+  <div id="basemaps"></div>
+  <h2>按编码打开</h2>
+  <form id="goto"><input id="goto-id" placeholder="如 330106 / US-NY / cj:贯洞镇" /><button>打开</button></form>
+  <h2>当前</h2>
+  <div id="focus" class="meta"></div>
+  <div id="issues" class="meta"></div>
+  <p class="meta">地址栏 ?region=&lt;id&gt; 可直接打开任意层级;世界与一级行政区取自 Natural Earth,中国至区县取自 DataV,需要联网。</p>
+</aside>
+<script src="dist/lazy.js"></script>
+</body>
+</html>

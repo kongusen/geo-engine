@@ -8,11 +8,11 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "rm -rf dist && esbuild src/index.ts --bundle --format=esm --platform=neutral --target=es2022 --sourcemap --external:three --external:three/* --external:@yaoyu/geo-engine --outfile=dist/index.js && tsc -p tsconfig.build.json",
+    "build": "rm -rf dist && esbuild src/index.ts --bundle --format=esm --platform=neutral --target=es2022 --sourcemap --external:three --external:three/* --external:@yaoyu/geo-engine --external:@yaoyu/geo-data --outfile=dist/index.js && tsc -p tsconfig.build.json",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "playground": "esbuild playground/main.ts --bundle --format=iife --outdir=playground/dist --servedir=playground --serve=5199",
-    "playground:build": "esbuild playground/main.ts --bundle --format=iife --outdir=playground/dist",
+    "playground": "esbuild playground/main.ts playground/lazy.ts --bundle --format=iife --outdir=playground/dist --servedir=playground --serve=5199",
+    "playground:build": "esbuild playground/main.ts playground/lazy.ts --bundle --format=iife --outdir=playground/dist",
     "visual-check": "node scripts/visual-check.mjs",
     "soak": "node scripts/soak.mjs",
     "prepack": "pnpm build"

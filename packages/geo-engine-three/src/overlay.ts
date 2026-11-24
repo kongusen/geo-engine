@@ -31,6 +31,12 @@ export interface OverlayContext {
   bounds: { minX: number; minY: number; maxX: number; maxY: number } | null;
   /** 当前板块的最高顶面 z(仅平面模式,地球为 0)。 */
   maxSurface: number;
+  /** 板块底面 z(仅平面模式,地球为 0)。 */
+  baseHeight: number;
+  /** 平面坐标 → 经纬度(仅平面模式)。 */
+  unproject(x: number, y: number): Position | null;
+  /** 场景相机(按视野选取瓦片等需要)。插件不应修改它。 */
+  camera(): THREE.PerspectiveCamera;
   /** 按 id 查找区域(用于以区域锚点定位的数据)。 */
   region(id: string): Region | undefined;
   /** 画布像素尺寸(粗线宽度等需要)。 */
@@ -53,6 +59,8 @@ export interface OverlayInstance {
 export interface OverlayPlugin<TData = unknown> {
   type: string;
   modes: OverlayMode[];
+  /** 镜头拉近时是否随 overlayZoomFade 淡出(缺省 true);底图等背景类图层应设为 false。 */
+  zoomFade?: boolean;
   create(ctx: OverlayContext, spec: LayerSpec<TData>): OverlayInstance;
 }
 
