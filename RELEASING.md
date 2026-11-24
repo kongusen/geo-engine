@@ -27,6 +27,7 @@ npm 的可信发布者（trusted publisher）只能在**已存在的包**上配�
 
 1. npmjs.com → Access Tokens → Generate New Token → **Granular Access Token**：
    - Packages and scopes：Read and write，范围只选 `@geodive`
+   - 勾选 **Bypass two-factor authentication (2FA)**。账号开了 2FA 时，不勾选会在发布时报 `E403 ... bypass 2fa enabled is required`
    - 有效期选最短（如 7 天）
 2. GitHub 仓库 → Settings → Environments → `npm`（推送 tag 后工作流会自动创建，也可以先手动建）→ Environment secrets → 添加 `NPM_TOKEN`。
 3. 推送 tag：
