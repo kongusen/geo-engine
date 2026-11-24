@@ -97,7 +97,7 @@ export type ControlPoint = { source: Position; target: Position };
 
 /**
  * 由 ≥3 个控制点(本地坐标 → 经纬度)最小二乘拟合仿射参数,并返回残差(度)。
- * 用于把 SVG 描出的边界(如现有从江乡镇图)配准到真实经纬度。
+ * 用于把 SVG / CAD 等本地坐标描出的边界配准到真实经纬度。
  */
 export function fitAffine(points: ControlPoint[]): { affine: Affine; maxResidual: number } {
   if (points.length < 3) throw new Error("至少需要 3 个控制点");

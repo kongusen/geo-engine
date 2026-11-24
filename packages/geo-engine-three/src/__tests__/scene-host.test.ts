@@ -52,11 +52,11 @@ describe("SceneHost", () => {
     host.setAccent("#f59e0b");
     host.setLabelsVisible(false);
     host.setViewportInset({ top: 180, right: 416, bottom: 232, left: 416 });
-    host.setHighlight("522633");
+    host.setHighlight("330106");
     host.registerOverlay({ type: "custom", modes: ["plane"], create: () => ({ dispose() {} }) });
 
     expect(created[0].insets).toEqual([{ inset: { top: 180, right: 416, bottom: 232, left: 416 }, animate: true }]);
-    expect(created[0].highlights).toEqual(["522633"]);
+    expect(created[0].highlights).toEqual(["330106"]);
 
     created[0].options.onContextLost!();
     expect(host.state).toBe("recovering");
@@ -68,7 +68,7 @@ describe("SceneHost", () => {
     expect(created[1].options.theme?.accent).toBe("#f59e0b");
     expect(created[1].options.viewportInset).toEqual({ top: 180, right: 416, bottom: 232, left: 416 });
     expect(created[1].labels).toEqual([false]);
-    expect(created[1].highlights).toEqual(["522633"]);
+    expect(created[1].highlights).toEqual(["330106"]);
     expect(created[1].overlays).toEqual(["custom"]);
     expect(statuses).toEqual(["ready", "recovering", "ready"]);
     expect(host.builds).toBe(2);

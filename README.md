@@ -38,7 +38,7 @@
 
 ## 完整接入示例
 
-下面的例子从地球下钻到国家，再到一级行政区；中国以下用国内行政区划，一直到区县；某个县下面再挂上业务方自己的乡镇数据；地图下方铺一层天地图底图。
+下面的例子从地球下钻到国家，再到一级行政区；中国以下用国内行政区划，一直到区县；某个区县下面再挂上业务方自己的边界数据（园区、地块等）；地图下方铺一层天地图底图。
 
 ```ts
 import {
@@ -51,7 +51,7 @@ const engine = new GeoEngine({
   sources: [
     naturalEarthSource({ exclude: ["TWN"] }),                                   // 顶层:各国
     mount({ at: "CHN", source: datavSource(), root: "100000", adopt: true }),   // 中国以下用 DataV,国界也用 DataV 的
-    mount({ at: "522633", source: staticSource(myTownships), root: "522633", ids: prefixIds("cj:") }), // 自有乡镇数据
+    mount({ at: "330106", source: staticSource(myPlots), root: "330106", ids: prefixIds("plot:") }),    // 自有地块数据
   ],
   load: { retries: 2, timeoutMs: 15000 },
 });
@@ -59,7 +59,7 @@ const engine = new GeoEngine({
 // 2. 引擎层:声明图层
 engine.setLayers([
   basemap(tianditu({ key: TIANDITU_KEY, attribution: "© 天地图 GS(XXXX)XXXX号" }), { style: { invert: 1, grayscale: 1, tint: "accent" } }),
-  { id: "values", type: "choropleth", data: { values: { "520000": 120, "530000": 80 }, unit: "家" } },
+  { id: "values", type: "choropleth", data: { values: { "330000": 120, "320000": 80 }, unit: "家" } },
   { id: "labels", type: "label", data: { showValue: true } },
 ]);
 

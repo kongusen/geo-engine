@@ -1,12 +1,14 @@
-import { GeoEngine, interiorPoint, pointInRing, signedRingArea, type MultiPolygonCoords, type Position, type RegionInput, type Ring } from "@yaoyu/geo-engine";
+import { GeoEngine, ingest, interiorPoint, pointInRing, signedRingArea, type MultiPolygonCoords, type Position, type RegionInput, type Ring } from "@yaoyu/geo-engine";
 import { chinaProvincesData } from "./china";
 import { worldLand } from "./world_land_data";
-import { CONGJIANG_COUNTY_ID, congjiangRegions } from "./congjiang-regions";
+import zhejiang from "./zhejiang.json";
 
 export const CHINA_ID = "CHN";
-export const GUIZHOU_ID = "520000";
-/** 从江县城(丙妹镇)位置,用于全球 / 全国层级的定位标记。 */
-export const CONGJIANG_SEAT: Position = [108.905, 25.747];
+export const ZHEJIANG_ID = "330000";
+export const HANGZHOU_ID = "330100";
+export const XIHU_ID = "330106";
+/** 演示用的定位标记位置(杭州市区),用于全球 / 全国层级的点位、飞线起点。 */
+export const DEMO_SEAT: Position = [120.155, 30.274];
 
 /** china.ts 的预投影 SVG 坐标 → 经纬度(projectChina 的逆变换)。 */
 function unprojectChina(x: number, y: number): Position {
@@ -74,7 +76,17 @@ export function chinaNineDashLines(): Position[][] {
 export const WORLD_LAND: Position[][] = worldLand as Position[][];
 
 /**
- * 全景页下钻链:地球 → 中国 → 各省 → (贵州)从江县 → 乡镇。
+ * 浙江各市与杭州各区(DataV 行政区划快照,GCJ-02,导入时纠偏)。
+ * 区县在 DataV 中是叶子,演示页的最深一级即为区县。
+ */
+export function zhejiangRegions(): RegionInput[] {
+  const cities = ingest(zhejiang["330000_full"], { crs: "gcj02", parentId: ZHEJIANG_ID }).regions;
+  const districts = ingest(zhejiang["330100_full"], { crs: "gcj02", parentId: HANGZHOU_ID }).regions;
+  return [...cities, ...districts];
+}
+
+/**
+ * 演示页下钻链:地球 → 中国 → 各省 → 浙江各市 → 杭州各区。
  * 中国的外形由各省合成,不使用国际数据集中的国界。
  */
 export function overviewRegions(): RegionInput[] {
@@ -86,17 +98,14 @@ export function overviewRegions(): RegionInput[] {
     parentId: null,
     polygons: provinces.flatMap((p) => p.polygons),
   };
-  const congjiang = congjiangRegions().regions.map((region) =>
-    region.id === CONGJIANG_COUNTY_ID ? { ...region, parentId: GUIZHOU_ID } : region,
-  );
-  return [china, ...provinces, ...congjiang];
+  return [china, ...provinces, ...zhejiangRegions()];
 }
 
 /**
- * 全景页引擎。地球上点击中国直达从江县(一段连续转场,中途不用再点);
- * 中国 / 贵州层级仍可经面包屑或"返回上一级"进入,在那里点击按常规逐级下钻。
+ * 演示页引擎。地球上点击中国直达杭州市(演示一步跨级下钻:一段连续转场,中途不用再点);
+ * 中国 / 浙江层级仍可经面包屑或"返回上一级"进入,在那里点击按常规逐级下钻。
  */
-export function createOverviewEngine({ diveTo = CONGJIANG_COUNTY_ID }: { diveTo?: string | null } = {}): GeoEngine {
+export function createOverviewEngine({ diveTo = HANGZHOU_ID }: { diveTo?: string | null } = {}): GeoEngine {
   const engine = new GeoEngine({
     rootId: null,
     redirectActivate: (region, state) => (diveTo && state.focusId === null && region.id === CHINA_ID ? diveTo : null),

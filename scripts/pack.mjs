@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 构建并打出可分发的 .tgz,供其他项目以 file: 方式引用。
-//   pnpm pack:to <目标目录>      例:pnpm pack:to ../yaoyu-data/vendor/geo
+//   pnpm pack:to <目标目录>      例:pnpm pack:to ../your-project/vendor/geo
 // 先跑类型检查和测试,任一失败即中止;打包时 workspace:* 依赖会被替换为实际版本号,exports 切换到 dist。
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync } from "node:fs";

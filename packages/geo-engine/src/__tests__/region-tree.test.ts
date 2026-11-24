@@ -9,17 +9,17 @@ describe("RegionTree", () => {
     const tree = new RegionTree(
       [
         { id: "CN", name: "中国", polygons: box(70, 10, 130, 50) },
-        { id: "GZ", name: "贵州", parentId: "CN", polygons: box(103, 24, 110, 29) },
-        { id: "CJ", name: "从江县", parentId: "GZ", polygons: box(108, 25, 109, 26), aliases: ["从江"] },
+        { id: "ZJ", name: "浙江", parentId: "CN", polygons: box(103, 24, 110, 29) },
+        { id: "XH", name: "西湖区", parentId: "ZJ", polygons: box(108, 25, 109, 26), aliases: ["西湖"] },
       ],
       { inferParents: false },
     );
-    expect(tree.path("CJ").map((r) => r.name)).toEqual(["中国", "贵州", "从江县"]);
-    expect(tree.depth("CJ")).toBe(2);
-    expect(tree.isLeaf("CJ")).toBe(true);
-    expect(tree.isLeaf("GZ")).toBe(false);
-    expect(tree.resolve("从江")?.id).toBe("CJ");
-    expect(tree.resolve(" 从 江 县 ")?.id).toBe("CJ");
+    expect(tree.path("XH").map((r) => r.name)).toEqual(["中国", "浙江", "西湖区"]);
+    expect(tree.depth("XH")).toBe(2);
+    expect(tree.isLeaf("XH")).toBe(true);
+    expect(tree.isLeaf("ZJ")).toBe(false);
+    expect(tree.resolve("西湖")?.id).toBe("XH");
+    expect(tree.resolve(" 西 湖 区 ")?.id).toBe("XH");
   });
 
   it("无编码数据按空间包含推断出完整层级(乱序一次加入)", () => {

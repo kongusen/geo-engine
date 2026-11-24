@@ -6,7 +6,7 @@ const geo: TileSource = { ...merc, matrix: "geographic" };
 
 describe("瓦片计算", () => {
   it("墨卡托:经纬度与瓦片号互逆", () => {
-    // 从江县城在 z=10:x = (108.905+180)/360·1024 ≈ 821.8;y = (1 − ln(tanφ+secφ)/π)/2·1024 ≈ 436.2
+    // 示例点 (108.905, 25.747) 在 z=10:x = (108.905+180)/360·1024 ≈ 821.8;y = (1 − ln(tanφ+secφ)/π)/2·1024 ≈ 436.2
     const [fx, fy] = lngLatToTile(merc, [108.905, 25.747], 10);
     expect([Math.floor(fx), Math.floor(fy)]).toEqual([821, 436]);
     const [lng, lat] = tileToLngLat(merc, { z: 10, x: Math.floor(fx), y: Math.floor(fy) }, fx % 1, fy % 1);

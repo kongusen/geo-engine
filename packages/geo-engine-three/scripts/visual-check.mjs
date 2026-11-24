@@ -119,20 +119,20 @@ try {
   await installFrameProbe(page);
   await capture(page, "globe", "初始地球");
 
-  // 1. 地球上点中国 → 一步直达从江县(地球 → 平面跨级转场)
+  // 1. 地球上点中国 → 一步直达杭州市(地球 → 平面跨级转场)
   await page.evaluate(() => window.__geo.engine.activate("CHN"));
   await captureTransition(page, "dive", "点击中国");
-  await expect((await crumbs(page)).includes("从江县"), `[dive] 面包屑应到从江县,实际:${await crumbs(page)}`);
+  await expect((await crumbs(page)).includes("杭州市"), `[dive] 面包屑应到杭州市,实际:${await crumbs(page)}`);
   await checkFrameProbe(page, "dive");
 
-  // 2. 平面层级:县 → 乡镇 → 返回县
-  await page.evaluate(() => window.__geo.engine.drill.drillTo("丙妹镇"));
-  await captureTransition(page, "plane", "进入丙妹镇");
+  // 2. 平面层级:市 → 区县(叶子)→ 返回市
+  await page.evaluate(() => window.__geo.engine.drill.drillTo("330106"));
+  await captureTransition(page, "plane", "进入西湖区");
   await page.evaluate(() => window.__geo.engine.drill.drillUp());
-  await captureTransition(page, "plane", "返回从江县");
+  await captureTransition(page, "plane", "返回杭州市");
   await checkFrameProbe(page, "plane");
 
-  // 3. 县 → 地球(平面 → 地球跨级上卷)
+  // 3. 市 → 地球(平面 → 地球跨级上卷)
   await page.evaluate(() => window.__geo.engine.drill.drillTo(null));
   await captureTransition(page, "rise", "返回地球");
   await checkFrameProbe(page, "rise");
@@ -150,7 +150,7 @@ try {
   // 5. 重建后仍可下钻
   await page.evaluate(() => window.__geo.engine.activate("CHN"));
   await captureTransition(page, "context", "重建后再次下钻");
-  await expect((await crumbs(page)).includes("从江县"), "[context] 重建后下钻失败");
+  await expect((await crumbs(page)).includes("杭州市"), "[context] 重建后下钻失败");
   await checkFrameProbe(page, "context");
 } catch (error) {
   failures.push(`脚本异常:${error.message}`);

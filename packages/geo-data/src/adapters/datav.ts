@@ -46,7 +46,7 @@ const isDecoration = (f: DatavFeature) => !f.properties.name || !!f.properties.a
 /**
  * DataV GeoAtlas 行政区划数据源(国家 → 省 → 市 → 区县)。
  * 每个父级对应 `{adcode}_full.json`;是否有下级取自 childrenNum;祖先链按行政区划代码推导(无请求)。
- * DataV 不含乡镇级,乡镇及以下可在区县上挂载其他数据源:mount({ at: "522633", source: ... })。
+ * DataV 不含乡镇级,乡镇及以下可在区县上挂载其他数据源:mount({ at: "330106", source: ... })。
  */
 export function datavSource(options: DatavSourceOptions = {}): DatavSource {
   const base = (options.baseUrl ?? DEFAULT_BASE).replace(/\/$/, "");

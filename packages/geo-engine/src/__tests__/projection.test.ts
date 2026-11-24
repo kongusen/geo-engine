@@ -65,8 +65,8 @@ describe("projection", () => {
     expect(viewFor(null).scene).toBe("globe");
     expect(viewFor([73, 18, 135, 54]).scene).toBe("plane"); // 中国:国家尺度用平面板块
     expect(viewFor([-170, -50, 170, 75]).scene).toBe("globe"); // 洲际以上
-    expect(viewFor([103.6, 24.6, 109.6, 29.2]).scene).toBe("plane"); // 贵州
-    expect(viewFor([108.2, 25.3, 109.3, 26.1]).scene).toBe("plane"); // 从江
+    expect(viewFor([103.6, 24.6, 109.6, 29.2]).scene).toBe("plane"); // 浙江
+    expect(viewFor([108.2, 25.3, 109.3, 26.1]).scene).toBe("plane"); // 县级范围
   });
 
   it("相机距离随区域增大而增大", () => {

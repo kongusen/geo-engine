@@ -21,13 +21,13 @@ describe("DataV 懒加载 + 深链接", () => {
     const { engine, files } = engineWithDatav();
     await engine.start();
     // restore 走 jump,可以直接定位到叶子(聚焦后显示区域自身)
-    expect(await engine.drill.restore("522633")).toBe(true);
-    expect(engine.drill.state.path.map((r) => r.name)).toEqual(["中华人民共和国", "贵州省", "黔东南苗族侗族自治州", "从江县"]);
-    expect(engine.frame().regions.map((r) => r.id)).toEqual(["522633"]);
-    expect(engine.isLeaf("522633")).toBe(true);
-    expect(files()).not.toContain("522633_full.json");
+    expect(await engine.drill.restore("330106")).toBe(true);
+    expect(engine.drill.state.path.map((r) => r.name)).toEqual(["中华人民共和国", "浙江省", "杭州市", "西湖区"]);
+    expect(engine.frame().regions.map((r) => r.id)).toEqual(["330106"]);
+    expect(engine.isLeaf("330106")).toBe(true);
+    expect(files()).not.toContain("330106_full.json");
     // 链上没有虚级时,各级文件只请求一次
-    expect(files().filter((f) => f === "520000_full.json")).toHaveLength(1);
+    expect(files().filter((f) => f === "330000_full.json")).toHaveLength(1);
   });
 
   it("直辖市:跳过推导出的 110100 虚级", async () => {

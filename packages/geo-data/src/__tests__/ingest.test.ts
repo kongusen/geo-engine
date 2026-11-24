@@ -1,21 +1,30 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { lngLatToWebMercator } from "../crs";
 import { signedRingArea } from "../geometry";
 import { ingest } from "../ingest";
 import { feature, rect } from "./fixtures";
 
-const congjiangPath = fileURLToPath(new URL("../../../../fixtures/congjiang.json", import.meta.url));
+/** 本地坐标(如 SVG 3000×2250 画布,y 轴向下)描出的 3×2 网格地块。 */
+function svgGrid() {
+  const features = [];
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 3; col++) {
+      const x0 = 200 + col * 900, y0 = 200 + row * 900;
+      // SVG 中顺时针书写(y 向下),转换后应被统一为逆时针外环
+      features.push(feature({ name: `地块${row}${col}` }, [[[x0, y0], [x0 + 800, y0], [x0 + 800, y0 + 800], [x0, y0 + 800], [x0, y0]]]));
+    }
+  }
+  return { type: "FeatureCollection", features };
+}
 
 describe("ingest", () => {
   it("读取 DataV 风格属性(adcode / parent.adcode / 别名)", () => {
     const { regions, issues } = ingest({
       type: "FeatureCollection",
-      features: [feature({ adcode: 522633, name: "从江县", parent: { adcode: 522600 }, alias: "从江、Congjiang" }, [rect(108, 25, 109, 26)])],
+      features: [feature({ adcode: 330106, name: "西湖区", parent: { adcode: 330100 }, alias: "西湖、Xihu" }, [rect(120, 30.1, 120.2, 30.3)])],
     });
     expect(issues.filter((i) => i.severity === "error")).toEqual([]);
-    expect(regions[0]).toMatchObject({ id: "522633", name: "从江县", parentId: "522600", aliases: ["从江", "Congjiang"] });
+    expect(regions[0]).toMatchObject({ id: "330106", name: "西湖区", parentId: "330100", aliases: ["西湖", "Xihu"] });
   });
 
   it("修复未闭合环与顺时针外环,跳过非面要素,拒绝重复编码", () => {
@@ -40,14 +49,14 @@ describe("ingest", () => {
     expect(regions[0].polygons[0][0][0][0]).toBeCloseTo(108, 6);
   });
 
-  it("现有从江 SVG 本地坐标:自动识别失败并要求配准;提供仿射后可导入全部乡镇", () => {
-    const source = JSON.parse(readFileSync(congjiangPath, "utf8"));
+  it("SVG 本地坐标:自动识别失败并要求配准;提供仿射后可全部导入", () => {
+    const source = svgGrid();
     const failed = ingest(source);
     expect(failed.regions).toEqual([]);
     expect(failed.issues[0].code).toBe("crs-unknown");
 
-    // 粗略配准:3000×2250 → 从江县经纬度范围(仅用于验证流程,非真实配准参数)
-    const ok = ingest(source, { crs: { affine: [0.000387, 0, 108.17, 0, -0.000354, 26.1] }, idKey: "name", level: "township", parentId: "522633" });
+    // 示意配准:3000×2250 画布 → 约 1.2°×0.8° 的经纬度范围(仅用于验证流程)
+    const ok = ingest(source, { crs: { affine: [0.0004, 0, 108.17, 0, -0.00035, 26.1] }, idKey: "name", level: "plot", parentId: "AREA" });
     expect(ok.issues.filter((i) => i.severity === "error")).toEqual([]);
     expect(ok.regions.length).toBe(source.features.length);
     for (const region of ok.regions) {

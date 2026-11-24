@@ -9,7 +9,7 @@ import { createTheme } from "../theme";
 const center: [number, number] = [108.9, 25.7];
 const R = 100;
 
-/** 俯视从江县的平面上下文:相机在切点正上方。 */
+/** 俯视一个县级范围的平面上下文:相机在切点正上方。 */
 function planeCtx(): { ctx: OverlayContext; group: THREE.Group } {
   const mapper = createPlaneMapper(center, R);
   const group = new THREE.Group();

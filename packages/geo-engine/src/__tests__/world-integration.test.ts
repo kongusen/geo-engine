@@ -9,9 +9,9 @@ const fixture = (name: string) => JSON.parse(readFileSync(fileURLToPath(new URL(
 const ne = fixture("naturalearth-sample.json");
 const datav: Record<string, unknown> = fixture("datav-sample.json");
 
-/** 地球 → 各国(Natural Earth)→ 中国挂 DataV(接缝采用 DataV 轮廓)→ 从江挂本地乡镇。 */
+/** 地球 → 各国(Natural Earth)→ 中国挂 DataV(接缝采用 DataV 轮廓)→ 西湖区挂自有地块。 */
 function worldEngine() {
-  const towns = staticSource([{ id: "丙妹镇", name: "丙妹镇", parentId: "522633", polygons: box(108.8, 25.6, 109, 25.8) }], { id: "cj" });
+  const towns = staticSource([{ id: "北山街道", name: "北山街道", parentId: "330106", polygons: box(108.8, 25.6, 109, 25.8) }], { id: "plots" });
   return new GeoEngine({
     sources: [
       naturalEarthSource({ fetch: async (url) => (url.includes("admin_1") ? ne.admin1 : ne.countries), exclude: ["TWN"] }),
@@ -27,7 +27,7 @@ function worldEngine() {
           },
         }),
       }),
-      mount({ at: "522633", root: "522633", source: towns, ids: prefixIds("cj:") }),
+      mount({ at: "330106", root: "330106", source: towns, ids: prefixIds("plot:") }),
     ],
     load: { retries: 0 },
   });
@@ -52,12 +52,12 @@ describe("世界 → 国家 → 一级行政区 / 国内多级", () => {
     expect(engine.selection?.id).toBe("US-CA"); // 叶子:选中而不是下钻
   });
 
-  it("深链接跨三个数据集:cj:丙妹镇 一次定位", async () => {
+  it("深链接跨三个数据集:plot:北山街道 一次定位", async () => {
     const engine = worldEngine();
     await engine.start();
-    expect(await engine.drill.restore("cj:丙妹镇")).toBe(true);
-    expect(engine.drill.state.path.map((r) => r.id)).toEqual(["CHN", "520000", "522600", "522633", "cj:丙妹镇"]);
-    expect(engine.drill.state.path.map((r) => r.source?.id)).toEqual(["natural-earth", "datav", "datav", "datav", "cj"]);
+    expect(await engine.drill.restore("plot:北山街道")).toBe(true);
+    expect(engine.drill.state.path.map((r) => r.id)).toEqual(["CHN", "330000", "330100", "330106", "plot:北山街道"]);
+    expect(engine.drill.state.path.map((r) => r.source?.id)).toEqual(["natural-earth", "datav", "datav", "datav", "plots"]);
   });
 
   it("深链接到另一国的一级行政区", async () => {

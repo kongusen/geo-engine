@@ -87,7 +87,7 @@ engine.drill.events.on("blocked", ({ targetId, reason }) => {
 **一步跨级下钻**：`redirectActivate` 返回另一个区域 id 时，点击会直接跳到那个区域，中间层级只出现在面包屑里，渲染器把整段当成一次连续转场。
 
 ```ts
-redirectActivate: (region, state) => (state.focusId === null && region.id === "CHN" ? "522633" : null)
+redirectActivate: (region, state) => (state.focusId === null && region.id === "CHN" ? "330106" : null)
 ```
 
 ## 事件
@@ -137,9 +137,9 @@ engine.setLayers([
 ```ts
 // 按编码、名称或别名把业务行关联到区域;同一区域有多行时数值累加
 const { values, unmatched } = bindData(engine.tree, rows, {
-  key: (row) => row.townName,      // 编码、名称、别名都可以(名称忽略空白和大小写)
+  key: (row) => row.streetName,      // 编码、名称、别名都可以(名称忽略空白和大小写)
   value: (row) => row.count,
-  withinId: "522633",              // 只在该区域的后代中匹配(解决不同县的同名乡镇)
+  withinId: "330106",              // 只在该区域的后代中匹配(解决不同区县下的同名街道 / 乡镇)
 });
 // unmatched 是没匹配上的行,可以用来做数据质量报告
 
@@ -169,7 +169,7 @@ engine.unuse("audit");
 **自动巡游**（大屏无人值守）：按站点依次下钻；有人操作（悬停、选中、手动下钻）时让位，空闲一段时间后从下一站继续。
 
 ```ts
-const tour = autoTour({ stops: ["CHN", "520000", "522633", null], dwellMs: 8000, resumeAfterMs: 30000, autoStart: true, loop: true });
+const tour = autoTour({ stops: ["CHN", "330000", "330106", null], dwellMs: 8000, resumeAfterMs: 30000, autoStart: true, loop: true });
 engine.use(tour);
 tour.start(); tour.pause(); tour.stop(); tour.running; tour.index;
 ```

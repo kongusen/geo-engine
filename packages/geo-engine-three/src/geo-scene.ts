@@ -63,7 +63,7 @@ export interface PointDatum {
   id: string;
   name: string;
   position: Position;
-  /** 点位旁的文字(如"从江 · 瑶浴之乡");缺省不显示。 */
+  /** 点位旁的文字(如"总部 · 华东区");缺省不显示。 */
   label?: string;
   color?: string;
 }
@@ -497,13 +497,13 @@ export class GeoScene implements SceneAdapter {
     this.overlayPlugins.set(plugin.type, plugin);
   }
 
-  /** 显示 / 隐藏全部文字标签(如全景页待机时地球只作装饰,避免与页面标题重叠)。 */
+  /** 显示 / 隐藏全部文字标签(如待机时地球只作装饰,避免与页面标题重叠)。 */
   setLabelsVisible(visible: boolean): void {
     // 用 display 而不是 visibility:内层标签会显式设置 visibility(避让 / 背面隐藏),会覆盖父级的 hidden
     this.labelRenderer.domElement.style.display = visible ? "" : "none";
   }
 
-  /** 运行时切换主色(如全景页按产业轮换配色)。当前平面层级的板块颜色同步刷新。 */
+  /** 运行时切换主色(如按主题轮换配色)。当前平面层级的板块颜色同步刷新。 */
   setAccent(accent: string): void {
     if (!accent || accent === this.theme.accent) return;
     Object.assign(this.theme, createTheme({ ...this.options.theme, accent, background: this.theme.background }));

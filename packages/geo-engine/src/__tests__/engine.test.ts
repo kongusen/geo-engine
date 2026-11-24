@@ -11,13 +11,13 @@ function lazySource(): GeoSource & { calls: (string | null)[] } {
       { id: "CN", name: "中国", level: "country", polygons: box(73, 18, 135, 54), expandable: true },
       { id: "FR", name: "法国", level: "country", polygons: box(-5, 42, 8, 51), expandable: true },
     ],
-    CN: [{ id: "GZ", name: "贵州", level: "province", parentId: "CN", polygons: box(103, 24, 110, 29), expandable: true }],
-    GZ: {
+    CN: [{ id: "ZJ", name: "浙江", level: "province", parentId: "CN", polygons: box(103, 24, 110, 29), expandable: true }],
+    ZJ: {
       input: {
         type: "FeatureCollection",
         features: [
-          feature({ adcode: 522633, name: "从江县", level: "county" }, [rect(108, 25, 109, 26)]),
-          feature({ adcode: 520100, name: "贵阳市", level: "city" }, [rect(106, 26, 107, 27)]),
+          feature({ adcode: 330106, name: "西湖区", level: "county" }, [rect(108, 25, 109, 26)]),
+          feature({ adcode: 330200, name: "宁波市", level: "city" }, [rect(106, 26, 107, 27)]),
         ],
       },
     },
@@ -43,25 +43,25 @@ describe("GeoEngine", () => {
     expect(frames.at(-1)?.regions.map((r) => r.id)).toEqual(["CN", "FR"]);
 
     await engine.activate("CN");
-    await engine.activate("GZ");
+    await engine.activate("ZJ");
     const f = frames.at(-1)!;
-    expect(f.drill.path.map((r) => r.name)).toEqual(["中国", "贵州"]);
+    expect(f.drill.path.map((r) => r.name)).toEqual(["中国", "浙江"]);
     expect(f.view.scene).toBe("plane");
-    expect(f.regions.map((r) => r.name).sort()).toEqual(["从江县", "贵阳市"]);
-    expect(engine.tree.get("522633")?.parentId).toBe("GZ"); // GeoJSON 没有父级字段,由数据源父级补齐
-    expect(source.calls).toEqual([null, "CN", "GZ"]);
+    expect(f.regions.map((r) => r.name).sort()).toEqual(["宁波市", "西湖区"]);
+    expect(engine.tree.get("330106")?.parentId).toBe("ZJ"); // GeoJSON 没有父级字段,由数据源父级补齐
+    expect(source.calls).toEqual([null, "CN", "ZJ"]);
 
     // 县是叶子:点击切换选中而不是下钻
     const select = vi.fn();
     engine.on("select", select);
-    await engine.activate("522633");
-    expect(select).toHaveBeenCalledWith({ region: expect.objectContaining({ name: "从江县" }) });
-    expect(engine.drill.state.focusId).toBe("GZ");
+    await engine.activate("330106");
+    expect(select).toHaveBeenCalledWith({ region: expect.objectContaining({ name: "西湖区" }) });
+    expect(engine.drill.state.focusId).toBe("ZJ");
 
     // 再次进入已加载的层级不会重复请求
     await engine.drill.drillUp();
-    await engine.activate("GZ");
-    expect(source.calls).toEqual([null, "CN", "GZ"]);
+    await engine.activate("ZJ");
+    expect(source.calls).toEqual([null, "CN", "ZJ"]);
   });
 
   it("点击重定向:地球上点国家可一步跳到已加载的县,面包屑路径完整", async () => {
@@ -70,22 +70,22 @@ describe("GeoEngine", () => {
     });
     engine.addRegions([
       { id: "CN", name: "中国", level: "country", polygons: box(73, 18, 135, 54) },
-      { id: "GZ", name: "贵州", level: "province", parentId: "CN", polygons: box(103, 24, 110, 29) },
-      { id: "COUNTY", name: "从江县", level: "county", parentId: "GZ", polygons: box(108, 25, 109, 26) },
-      { id: "TOWN", name: "丙妹镇", level: "township", parentId: "COUNTY", polygons: box(108.5, 25.5, 108.8, 25.8) },
+      { id: "ZJ", name: "浙江", level: "province", parentId: "CN", polygons: box(103, 24, 110, 29) },
+      { id: "COUNTY", name: "西湖区", level: "county", parentId: "ZJ", polygons: box(108, 25, 109, 26) },
+      { id: "TOWN", name: "北山街道", level: "township", parentId: "COUNTY", polygons: box(108.5, 25.5, 108.8, 25.8) },
     ]);
     await engine.start();
     const changes: string[] = [];
     engine.on("drill", (c) => changes.push(`${c.direction}:${c.to.focusId}`));
     await engine.activate("CN");
     expect(changes).toEqual(["jump:COUNTY"]);
-    expect(engine.drill.state.path.map((r) => r.name)).toEqual(["中国", "贵州", "从江县"]);
+    expect(engine.drill.state.path.map((r) => r.name)).toEqual(["中国", "浙江", "西湖区"]);
     expect(engine.frame().view.scene).toBe("plane");
 
-    // 非顶层不重定向:回到中国后点贵州按常规下钻一级
+    // 非顶层不重定向:回到中国后点浙江按常规下钻一级
     await engine.drill.drillTo("CN");
-    await engine.activate("GZ");
-    expect(engine.drill.state.focusId).toBe("GZ");
+    await engine.activate("ZJ");
+    expect(engine.drill.state.focusId).toBe("ZJ");
   });
 
   it("加载失败:按策略重试,最终失败发出 error 事件而不抛出,状态不变,之后可再次进入", async () => {
@@ -100,7 +100,7 @@ describe("GeoEngine", () => {
             calls.push(parentId);
             if (parentId === null) return [{ id: "CN", name: "中国", level: "country", polygons: box(73, 18, 135, 54), expandable: true }];
             if (failures-- > 0) throw new Error("网络错误");
-            return [{ id: "GZ", name: "贵州", level: "province", parentId: "CN", polygons: box(103, 24, 110, 29) }];
+            return [{ id: "ZJ", name: "浙江", level: "province", parentId: "CN", polygons: box(103, 24, 110, 29) }];
           },
         },
       ],
@@ -137,7 +137,7 @@ describe("GeoEngine", () => {
     const engine = new GeoEngine({ redirectActivate: () => "MISSING" });
     engine.addRegions([
       { id: "CN", name: "中国", level: "country", polygons: box(73, 18, 135, 54) },
-      { id: "GZ", name: "贵州", level: "province", parentId: "CN", polygons: box(103, 24, 110, 29) },
+      { id: "ZJ", name: "浙江", level: "province", parentId: "CN", polygons: box(103, 24, 110, 29) },
     ]);
     await engine.start();
     await engine.activate("CN");
@@ -162,7 +162,7 @@ describe("GeoEngine", () => {
     expect(frame.layerDiff.enter.map((l) => l.id)).toEqual(["plate"]);
     expect(frame.layerDiff.exit.map((l) => l.id)).toEqual(["globe-fill"]);
     expect(frame.layerDiff.update.map((l) => l.id)).toEqual(["label"]);
-    await engine.activate("GZ");
+    await engine.activate("ZJ");
     expect(frame.layers.map((l) => l.id)).toEqual(["plate", "label", "county-points"]);
     expect(frame.layerDiff.enter.map((l) => l.id)).toEqual(["county-points"]);
     expect(frame.layerDiff.exit).toEqual([]);
@@ -188,16 +188,16 @@ describe("GeoEngine", () => {
     expect(seen).toEqual(["CN"]);
   });
 
-  it("以某区域为根(如全景页之外的产业大屏锁定从江县)", async () => {
-    const engine = new GeoEngine({ rootId: "GZ" });
+  it("以某区域为根(如只展示某个县的大屏)", async () => {
+    const engine = new GeoEngine({ rootId: "ZJ" });
     engine.addRegions([
-      { id: "GZ", name: "贵州", polygons: box(103, 24, 110, 29) },
-      { id: "CJ", name: "从江县", polygons: box(108, 25, 109, 26) },
+      { id: "ZJ", name: "浙江", polygons: box(103, 24, 110, 29) },
+      { id: "XH", name: "西湖区", polygons: box(108, 25, 109, 26) },
     ]);
     await engine.start();
     const f = engine.frame();
-    expect(f.focus?.id).toBe("GZ");
-    expect(f.regions.map((r) => r.id)).toEqual(["CJ"]);
+    expect(f.focus?.id).toBe("ZJ");
+    expect(f.regions.map((r) => r.id)).toEqual(["XH"]);
     expect(f.view.scene).toBe("plane");
   });
 });
@@ -209,7 +209,7 @@ describe("frame.anchor", () => {
     expect(engine.frame().anchor).toBeNull();
     await engine.activate("CN");
     expect(engine.frame().anchor?.id).toBe("CN");
-    await engine.activate("GZ");
+    await engine.activate("ZJ");
     expect(engine.frame().anchor?.id).toBe("CN");
   });
 });

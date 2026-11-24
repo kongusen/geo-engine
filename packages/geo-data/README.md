@@ -54,7 +54,7 @@ const { regions, issues } = ingest(geojson, {
   // 以上都可以是 字符串 | 字符串数组 | (properties, feature) => 值
   crs: "auto",                // auto | wgs84 | gcj02 | epsg3857 | { affine }
   simplify: 0.001,            // 抽稀容差(度),0 不抽稀
-  parentId: "522633",         // 没有父级信息的要素统一挂到此父级
+  parentId: "330106",         // 没有父级信息的要素统一挂到此父级
   level: "township",          // 没有 level 字段时使用
   topologyObject: "counties", // TopoJSON 对象名,缺省合并全部
 });
@@ -154,7 +154,7 @@ const mySource: RegionSource = {
 - 每个父级请求一个 `{adcode}_full.json`。能否下钻取自 `childrenNum`，区县是叶子。
 - 坐标缺省按 `gcj02` 纠偏到 WGS84。如果自建了 WGS84 镜像，传 `crs: "wgs84"`。
 - 祖先链按行政区划代码推导，不发请求。直辖市、省直辖县这类缺少中间级的情况会自动跳过。
-- `root` 可以设为某个省或市（如 `"520000"`），只服务这个范围。
+- `root` 可以设为某个省或市（如 `"330000"`），只服务这个范围。
 - `includeRoot` 缺省为 `true`：作为顶层数据源使用时，顶层返回 root 区域本身。
 - 无名称的装饰要素（如南海九段线 `100000_JD`）默认被过滤，用 `datav.decorations()` 取出 WGS84 折线，交给渲染层的 `line` 图层绘制。
 - `region(id)` 返回单个区域的边界，可以作为 `adopt` 的权威几何来源。
@@ -201,14 +201,14 @@ mount({
 2. 提供了这个父级区域的数据源；
 3. 按注册顺序，第一个认领它的数据源（`ids.toLocal` 非空，且 `owns` / `handles` 不否认）。
 
-**深链接定位**时，路由器先找到认识目标编码的数据源，再沿挂载点逐级向上拼出完整的祖先链。这样一次 `drillTo("cj:丙妹镇")` 就能跨三个数据集完成定位。
+**深链接定位**时，路由器先找到认识目标编码的数据源，再沿挂载点逐级向上拼出完整的祖先链。这样一次 `drillTo("plot:A1")` 就能跨三个数据集（世界 → 国内行政区划 → 自有地块）完成定位。
 
 **编码映射 IdMapper**（`{ toGlobal(localId), toLocal(globalId) | null }`）：
 
 | 映射 | 用途 |
 |---|---|
 | `identityIds()` | 缺省。各数据集编码天然不冲突时使用，如 ISO3 国家码与 6 位行政区划代码 |
-| `prefixIds("cj:")` | 加命名空间，编码空间可能冲突时使用 |
+| `prefixIds("plot:")` | 加命名空间，编码空间可能冲突时使用 |
 | `tableIds({ "156": "CHN" }, fallback?)` | 个别编码改名 |
 | 自定义对象 | 任意规则 |
 

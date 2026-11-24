@@ -7,7 +7,7 @@ import { prefixIds } from "../ids";
 import { staticSource } from "../source";
 import { box } from "./fixtures";
 
-/** DataV 真实属性 + 外接矩形几何的样本(100000 / 100000_full / 520000_full / 522600_full / 110000_full / 420000_full)。 */
+/** DataV 真实属性 + 外接矩形几何的样本(100000 / 100000_full / 330000_full / 330100_full / 110000_full / 420000_full)。 */
 const sample: Record<string, unknown> = JSON.parse(readFileSync(fileURLToPath(new URL("../../../../fixtures/datav-sample.json", import.meta.url)), "utf8"));
 const ctx = { signal: new AbortController().signal };
 
@@ -32,43 +32,43 @@ describe("datavSource", () => {
     expect(provinces.regions).toHaveLength(34); // 九段线装饰要素已过滤
     const taiwan = provinces.regions.find((r) => r.id === "710000")!;
     expect(taiwan.expandable).toBe(false);
-    expect(provinces.regions.find((r) => r.id === "520000")!.expandable).toBe(true);
+    expect(provinces.regions.find((r) => r.id === "330000")!.expandable).toBe(true);
     expect(provinces.regions.every((r) => r.parentId === "100000")).toBe(true);
     expect(provinces.attribution).toContain("DataV");
   });
 
   it("祖先链:按编码推导,链首保留 root;范围外不认", async () => {
     const src = datavSource({ fetch: fakeFetch() });
-    expect((await src.ancestors!("522633", ctx))!.map((r) => r.id)).toEqual(["100000", "520000", "522600"]);
+    expect((await src.ancestors!("330106", ctx))!.map((r) => r.id)).toEqual(["100000", "330000", "330100"]);
     expect(await src.ancestors!("100000", ctx)).toEqual([]);
     expect(await src.ancestors!("CHN", ctx)).toBeNull();
-    const gz = datavSource({ root: "520000", fetch: fakeFetch() });
-    expect((await gz.ancestors!("522633", ctx))!.map((r) => r.id)).toEqual(["520000", "522600"]);
-    expect(await gz.ancestors!("110101", ctx)).toBeNull();
-    expect(gz.owns!("110101")).toBe(false);
-    expect(gz.owns!("522633")).toBe(true);
+    const zj = datavSource({ root: "330000", fetch: fakeFetch() });
+    expect((await zj.ancestors!("330106", ctx))!.map((r) => r.id)).toEqual(["330000", "330100"]);
+    expect(await zj.ancestors!("110101", ctx)).toBeNull();
+    expect(zj.owns!("110101")).toBe(false);
+    expect(zj.owns!("330106")).toBe(true);
   });
 
   it("挂载到世界数据集下:接缝 100000 ↔ CHN", async () => {
     const world = staticSource([{ id: "CHN", name: "中国", parentId: null, polygons: box(73, 18, 135, 54) }]);
     const router = composeSources([world, mount({ at: "CHN", source: datavSource({ fetch: fakeFetch() }), root: "100000" })]);
-    expect(await router.ancestors("522633", ctx)).toEqual(["CHN", "520000", "522600"]);
+    expect(await router.ancestors("330106", ctx)).toEqual(["CHN", "330000", "330100"]);
     const provinces = (await router.children("CHN", ctx))!;
     expect(provinces.regions.every((r) => r.parentId === "CHN")).toBe(true);
   });
 
-  it("区县下挂载乡镇数据源:区县不再是叶子,乡镇可经前缀映射定位", async () => {
-    const townships = staticSource([{ id: "丙妹镇", name: "丙妹镇", parentId: "522633", polygons: box(108.8, 25.6, 109, 25.8) }], { id: "cj" });
+  it("区县下挂载自有数据源:区县不再是叶子,自有区域可经前缀映射定位", async () => {
+    const plots = staticSource([{ id: "A1", name: "示例地块 A1", parentId: "330106", polygons: box(120.1, 30.2, 120.12, 30.22) }], { id: "plots" });
     const router = composeSources([
       datavSource({ fetch: fakeFetch() }),
-      mount({ at: "522633", source: townships, root: "522633", ids: prefixIds("cj:") }),
+      mount({ at: "330106", source: plots, root: "330106", ids: prefixIds("plot:") }),
     ]);
-    const counties = (await router.children("522600", ctx))!;
-    expect(counties.regions.find((r) => r.id === "522633")!.expandable).toBe(true);
-    expect(counties.regions.find((r) => r.id === "522622")!.expandable).toBe(false);
-    expect(await router.ancestors("cj:丙妹镇", ctx)).toEqual(["100000", "520000", "522600", "522633"]);
-    const towns = (await router.children("522633", ctx))!;
-    expect(towns.regions.map((r) => [r.id, r.parentId])).toEqual([["cj:丙妹镇", "522633"]]);
+    const counties = (await router.children("330100", ctx))!;
+    expect(counties.regions.find((r) => r.id === "330106")!.expandable).toBe(true);
+    expect(counties.regions.find((r) => r.id === "330102")!.expandable).toBe(false);
+    expect(await router.ancestors("plot:A1", ctx)).toEqual(["100000", "330000", "330100", "330106"]);
+    const own = (await router.children("330106", ctx))!;
+    expect(own.regions.map((r) => [r.id, r.parentId])).toEqual([["plot:A1", "330106"]]);
   });
 
   it("decorations 取出九段线并复用同一次请求", async () => {

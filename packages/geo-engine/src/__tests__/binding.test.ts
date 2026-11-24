@@ -6,23 +6,23 @@ import { box } from "./fixtures";
 describe("binding", () => {
   const tree = new RegionTree(
     [
-      { id: "522633101", name: "丙妹镇", polygons: box(0, 0, 1, 1) },
-      { id: "522633210", name: "翠里瑶族壮族乡", aliases: ["翠里乡"], polygons: box(1, 0, 2, 1) },
+      { id: "330106001", name: "北山街道", polygons: box(0, 0, 1, 1) },
+      { id: "330106002", name: "灵隐街道", aliases: ["灵隐"], polygons: box(1, 0, 2, 1) },
     ],
     { inferParents: false },
   );
 
   it("按编码/名称/别名关联,同区域累加,记录未匹配行", () => {
     const rows = [
-      { town: "522633101", area: 10 },
-      { town: "丙妹镇", area: 5 },
-      { town: "翠里乡", area: 7 },
+      { town: "330106001", area: 10 },
+      { town: "北山街道", area: 5 },
+      { town: "灵隐", area: 7 },
       { town: "不存在乡", area: 1 },
-      { town: "翠里瑶族壮族乡", area: null },
+      { town: "灵隐街道", area: null },
     ];
     const { values, unmatched } = bindData(tree, rows, { key: (r) => r.town, value: (r) => r.area });
-    expect(values.get("522633101")?.value).toBe(15);
-    expect(values.get("522633210")?.value).toBe(7);
+    expect(values.get("330106001")?.value).toBe(15);
+    expect(values.get("330106002")?.value).toBe(7);
     expect(unmatched).toEqual([{ town: "不存在乡", area: 1 }]);
   });
 

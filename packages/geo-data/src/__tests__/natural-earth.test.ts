@@ -47,7 +47,7 @@ describe("naturalEarthSource", () => {
     expect((await src.ancestors!("US-CA", ctx))!.map((r) => r.id)).toEqual(["USA"]);
     expect(await src.ancestors!("USA", ctx)).toEqual([]);
     expect(await src.ancestors!("XX-ZZ", ctx)).toBeNull();
-    expect(await src.ancestors!("522633", ctx)).toBeNull();
+    expect(await src.ancestors!("330106", ctx)).toBeNull();
   });
 
   it("英文名、改名与自定义过滤", async () => {

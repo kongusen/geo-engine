@@ -4,23 +4,35 @@
  * 数据全部按需请求,不打包区域快照:
  * - 地球 → 各国 → 一级行政区:Natural Earth(naturalEarthSource;台湾不作为国家出现)
  * - 中国 → 省 → 市 → 区县:DataV GeoAtlas,挂载到 CHN 下,并以 DataV 的国界替换 Natural Earth 的中国轮廓(adopt)
- * - 从江县以下的乡镇:本地数据,通过 mount 挂到 DataV 的 522633 下,编码加 "cj:" 前缀
+ * - 西湖区以下的示例地块:程序生成的自有数据(非真实边界),通过 mount 挂到 DataV 的 330106 下,编码加 "plot:" 前缀
  * 地址栏 ?region=<id> 可直接打开任意层级(ensurePath 并行拉取祖先链),下钻时地址同步更新。
  * 底图:?tk=<天地图 key> 使用天地图,否则使用高德(GCJ-02,自动纠偏);面板可切换或关闭。
  */
-import { GeoEngine, amapTiles, datavSource, mount, naturalEarthSource, prefixIds, staticSource, tianditu, type LayerSpec, type TileSource } from "@yaoyu/geo-engine";
+import { GeoEngine, amapTiles, datavSource, mount, naturalEarthSource, prefixIds, staticSource, tianditu, type LayerSpec, type RegionInput, type TileSource } from "@yaoyu/geo-engine";
 import { SceneHost, basemap, type BasemapStyle } from "../src";
-import { CONGJIANG_COUNTY_ID, congjiangRegions } from "./demo-data/congjiang-regions";
 import { worldLand } from "./demo-data/world_land_data";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 // 抽稀(~500m 容差)减少顶点数。南海细小岛礁不在数据层删除(合规),由渲染层按部件尺寸降低挤出高度。
 const datav = datavSource({ simplify: 0.005 });
-const townships = staticSource(
-  congjiangRegions().regions.filter((r) => r.id !== CONGJIANG_COUNTY_ID),
-  { id: "congjiang", attribution: "乡镇边界为示意" },
-);
+
+/** 自有数据示例:西湖区内 3×2 个方形"园区地块"(示意,非真实边界),演示把业务方自己的边界挂到行政区划下。 */
+const DEMO_AREA = "330106";
+function demoPlots(): RegionInput[] {
+  const plots: RegionInput[] = [];
+  const [x0, y0, size, gap] = [120.06, 30.235, 0.014, 0.004];
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 3; col++) {
+      const x = x0 + col * (size + gap);
+      const y = y0 + row * (size + gap);
+      const id = `${"AB"[row]}${col + 1}`;
+      plots.push({ id, name: `示例地块 ${id}`, level: "plot", parentId: DEMO_AREA, polygons: [[[[x, y], [x + size, y], [x + size, y + size], [x, y + size], [x, y]]]] });
+    }
+  }
+  return plots;
+}
+const plots = staticSource(demoPlots(), { id: "plots", attribution: "地块为示例数据" });
 
 // 世界数据按"事实控制"绘制国界:台湾在其中是独立要素(且中文名不符合我国规范),排除;
 // 中国的轮廓由 DataV 国界替换(adopt),不使用国际数据集中的中国国界。
@@ -30,7 +42,7 @@ const engine = new GeoEngine({
   sources: [
     world,
     mount({ at: "CHN", source: datav, root: "100000", adopt: true }),
-    mount({ at: CONGJIANG_COUNTY_ID, source: townships, root: CONGJIANG_COUNTY_ID, ids: prefixIds("cj:") }),
+    mount({ at: DEMO_AREA, source: plots, root: DEMO_AREA, ids: prefixIds("plot:") }),
   ],
   load: { retries: 1, timeoutMs: 20000 },
 });
@@ -123,9 +135,9 @@ const jumps: Array<[string, string | null]> = [
   ["美国", "USA"],
   ["美国 · 加利福尼亚(深链接)", "US-CA"],
   ["俄罗斯", "RUS"],
-  ["贵州 · 黔东南", "522600"],
-  ["从江县", "522633"],
-  ["丙妹镇(挂载数据)", "cj:丙妹镇"],
+  ["浙江 · 杭州市", "330100"],
+  ["西湖区(下挂自有数据)", "330106"],
+  ["示例地块 A1(跨三个数据集深链接)", "plot:A1"],
   ["北京 · 东城区(无市辖区级)", "110101"],
   ["湖北 · 仙桃(省直辖)", "429004"],
 ];

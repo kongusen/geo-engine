@@ -62,7 +62,7 @@ function read(spec: KeySpec | undefined, fallback: string[], properties: Record<
 function asId(value: unknown): string | undefined {
   if (typeof value === "string" && value.trim()) return value.trim();
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  // DataV: parent: { adcode: 520000 }
+  // DataV: parent: { adcode: 330000 }
   if (value && typeof value === "object") {
     const nested = (value as Record<string, unknown>).adcode ?? (value as Record<string, unknown>).code ?? (value as Record<string, unknown>).id;
     return asId(nested);

@@ -10,10 +10,10 @@ import { box } from "./fixtures";
 function adcodeSource(attribution?: string) {
   const data: RegionInput[] = [
     { id: "100000", name: "中国", parentId: null, polygons: box(73, 18, 135, 54) },
-    { id: "520000", name: "贵州", parentId: "100000", polygons: box(103, 24, 110, 29) },
-    { id: "522600", name: "黔东南", parentId: "520000", polygons: box(107, 25, 110, 27.5) },
-    { id: "522633", name: "从江县", parentId: "522600", polygons: box(108.5, 25.3, 109.3, 26) },
-    { id: "522633101", name: "丙妹镇", parentId: "522633", polygons: box(108.8, 25.6, 109, 25.8), level: "township" },
+    { id: "330000", name: "浙江", parentId: "100000", polygons: box(103, 24, 110, 29) },
+    { id: "330100", name: "杭州", parentId: "330000", polygons: box(107, 25, 110, 27.5) },
+    { id: "330106", name: "西湖区", parentId: "330100", polygons: box(108.5, 25.3, 109.3, 26) },
+    { id: "330106001", name: "北山街道", parentId: "330106", polygons: box(108.8, 25.6, 109, 25.8), level: "township" },
     { id: "110000", name: "北京", parentId: "100000", polygons: box(115.4, 39.4, 117.5, 41) },
     { id: "110101", name: "东城区", parentId: "110000", polygons: box(116.38, 39.86, 116.45, 39.97) },
   ];
@@ -57,13 +57,13 @@ describe("ensurePath", () => {
     const phases: string[] = [];
     engine.on("loading", (e) => e.loading && phases.push(e.phase));
 
-    expect(await engine.drill.drillTo("522633101")).toBe(true);
-    expect(engine.drill.state.path.map((r) => r.name)).toEqual(["贵州", "黔东南", "从江县", "丙妹镇"]);
+    expect(await engine.drill.drillTo("330106001")).toBe(true);
+    expect(engine.drill.state.path.map((r) => r.name)).toEqual(["浙江", "杭州", "西湖区", "北山街道"]);
     expect(phases[0]).toBe("path");
-    expect(calls).toEqual(expect.arrayContaining(["520000", "522600", "522633"]));
+    expect(calls).toEqual(expect.arrayContaining(["330000", "330100", "330106"]));
     expect(stats().maxInflight).toBeGreaterThan(1);
     // 乡镇按源默认是叶子
-    expect(engine.isLeaf("522633101")).toBe(true);
+    expect(engine.isLeaf("330106001")).toBe(true);
   });
 
   it("跳过数据中不存在的中间级(直辖市没有市辖区)", async () => {
@@ -92,22 +92,22 @@ describe("ensurePath", () => {
     const { source } = adcodeSource();
     const engine = new GeoEngine({ sources: [source], load: { retries: 0 } });
     await engine.start();
-    const first = engine.drill.drillTo("522633101");
+    const first = engine.drill.drillTo("330106001");
     const second = engine.drill.drillTo("110000");
     expect(await first).toBe(false);
     expect(await second).toBe(true);
     expect(engine.drill.state.focusId).toBe("110000");
-    await engine.ensurePath("522633101");
-    expect(engine.tree.has("522633")).toBe(true);
+    await engine.ensurePath("330106001");
+    expect(engine.tree.has("330106")).toBe(true);
   });
 
   it("rootId 可以是尚未加载的深层区域", async () => {
     const { source } = adcodeSource();
-    const engine = new GeoEngine({ rootId: "522633", sources: [source], load: { retries: 0 } });
+    const engine = new GeoEngine({ rootId: "330106", sources: [source], load: { retries: 0 } });
     const frames: EngineFrame[] = [];
     engine.on("frame", (f) => frames.push(f));
     await engine.start();
-    expect(frames.at(-1)!.regions.map((r) => r.name)).toEqual(["丙妹镇"]);
+    expect(frames.at(-1)!.regions.map((r) => r.name)).toEqual(["北山街道"]);
   });
 
   it("跨数据集挂载:世界 → 中国(接缝)→ 县,并汇总版权信息", async () => {
@@ -116,9 +116,9 @@ describe("ensurePath", () => {
     await engine.start();
     expect(engine.tree.roots().map((r) => r.id)).toEqual(["CHN", "USA"]);
 
-    expect(await engine.drill.drillTo("522633")).toBe(true);
-    expect(engine.tree.path("522633").map((r) => r.id)).toEqual(["CHN", "520000", "522600", "522633"]);
-    expect(engine.tree.get("520000")!.source).toEqual({ id: "adcode", localId: "520000" });
+    expect(await engine.drill.drillTo("330106")).toBe(true);
+    expect(engine.tree.path("330106").map((r) => r.id)).toEqual(["CHN", "330000", "330100", "330106"]);
+    expect(engine.tree.get("330000")!.source).toEqual({ id: "adcode", localId: "330000" });
     expect(engine.frame().attributions).toEqual(["Natural Earth", "审图号 GS(2024)0000"]);
   });
 
@@ -126,12 +126,12 @@ describe("ensurePath", () => {
     const { source } = adcodeSource();
     const engine = new GeoEngine({
       sources: [world(), mount({ at: "CHN", source, root: "100000" })],
-      redirectActivate: (region, state) => (state.focusId === null && region.id === "CHN" ? "522633" : null),
+      redirectActivate: (region, state) => (state.focusId === null && region.id === "CHN" ? "330106" : null),
       load: { retries: 0 },
     });
     await engine.start();
     await engine.activate("CHN");
-    expect(engine.drill.state.focusId).toBe("522633");
+    expect(engine.drill.state.focusId).toBe("330106");
   });
 
   it("加载到空子级后标记为叶子,不再请求", async () => {

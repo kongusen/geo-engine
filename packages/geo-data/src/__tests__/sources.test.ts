@@ -33,13 +33,13 @@ describe("hierarchy", () => {
   const ids = (id: string) => (adcode(id, ctx) as { id: string }[] | null)?.map((x) => x.id) ?? null;
 
   it("按行政区划代码推导祖先", () => {
-    expect(ids("522633")).toEqual(["100000", "520000", "522600"]);
-    expect(ids("522633101")).toEqual(["100000", "520000", "522600", "522633"]);
-    expect(ids("522633101201")).toEqual(["100000", "520000", "522600", "522633", "522633101"]);
-    expect(ids("520000")).toEqual(["100000"]);
+    expect(ids("330106")).toEqual(["100000", "330000", "330100"]);
+    expect(ids("330106001")).toEqual(["100000", "330000", "330100", "330106"]);
+    expect(ids("330106001001")).toEqual(["100000", "330000", "330100", "330106", "330106001"]);
+    expect(ids("330000")).toEqual(["100000"]);
     expect(ids("100000")).toBeNull();
     expect(ids("CHN")).toBeNull();
-    expect((adcodeHierarchy({ root: null })("522633", ctx) as { id: string }[]).map((x) => x.id)).toEqual(["520000", "522600"]);
+    expect((adcodeHierarchy({ root: null })("330106", ctx) as { id: string }[]).map((x) => x.id)).toEqual(["330000", "330100"]);
   });
 
   it("parentMap 异步表只加载一次", async () => {
@@ -77,14 +77,14 @@ describe("SourceRouter", () => {
 
   it("挂载:接缝编码对到挂载点,子级经映射成为全局 id,并记录来源", async () => {
     const world = staticSource([r("CHN", null), r("USA", null)], { id: "world" });
-    const cn = staticSource([r("100000", null), r("520000", "100000"), r("522633", "520000")], { id: "cn", attribution: "审图号 GS(2024)0000" });
+    const cn = staticSource([r("100000", null), r("330000", "100000"), r("330106", "330000")], { id: "cn", attribution: "审图号 GS(2024)0000" });
     const router = composeSources([world, mount({ at: "CHN", source: cn, root: "100000", ids: prefixIds("cn:") })]);
     await router.children(null, ctx);
     const provinces = (await router.children("CHN", ctx))!;
-    expect(provinces.regions.map((x) => [x.id, x.parentId, x.source])).toEqual([["cn:520000", "CHN", { id: "cn", localId: "520000" }]]);
+    expect(provinces.regions.map((x) => [x.id, x.parentId, x.source])).toEqual([["cn:330000", "CHN", { id: "cn", localId: "330000" }]]);
     expect(provinces.attribution).toContain("审图号");
-    const counties = (await router.children("cn:520000", ctx))!;
-    expect(counties.regions.map((x) => [x.id, x.parentId])).toEqual([["cn:522633", "cn:520000"]]);
+    const counties = (await router.children("cn:330000", ctx))!;
+    expect(counties.regions.map((x) => [x.id, x.parentId])).toEqual([["cn:330106", "cn:330000"]]);
   });
 
   it("跨挂载点解析祖先链", async () => {
@@ -96,11 +96,11 @@ describe("SourceRouter", () => {
       children: async () => ({ regions: [] }),
     };
     const router = composeSources([world, mount({ at: "CHN", source: cn, root: "100000" })]);
-    expect(await router.ancestors("522633", ctx)).toEqual(["CHN", "520000", "522600"]);
+    expect(await router.ancestors("330106", ctx)).toEqual(["CHN", "330000", "330100"]);
     expect(await router.ancestors("USA", ctx)).toEqual([]);
     expect(await router.ancestors("ZZZ", ctx)).toBeNull();
     // 引擎已知挂载点路径时直接截断
-    expect(await router.ancestors("522633", { ...ctx, knownPath: (id) => (id === "CHN" ? ["EARTH", "CHN"] : null) })).toEqual(["EARTH", "CHN", "520000", "522600"]);
+    expect(await router.ancestors("330106", { ...ctx, knownPath: (id) => (id === "CHN" ? ["EARTH", "CHN"] : null) })).toEqual(["EARTH", "CHN", "330000", "330100"]);
   });
 
   it("hasChildren:refs > 数据自带 > 源默认", async () => {
