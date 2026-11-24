@@ -1,6 +1,6 @@
-import { bboxContainsPoint, pointInMultiPolygon, samplePoints } from "./geometry";
-import { toRegion } from "./ingest";
-import type { GeoIssue, Position, Region, RegionInput } from "./types";
+import { bboxContainsPoint, pointInMultiPolygon, samplePoints } from "@yaoyu/geo-data";
+import { toRegion } from "@yaoyu/geo-data";
+import type { GeoIssue, Position, Region, RegionInput } from "@yaoyu/geo-data";
 
 export interface AddRegionsOptions {
   /**
@@ -77,6 +77,12 @@ export class RegionTree {
   /** 叶子 = 没有已加载的子级,且未标记 expandable。 */
   isLeaf(id: string): boolean {
     return !(this.childIds.get(id)?.length) && !this.regions.get(id)?.expandable;
+  }
+
+  /** 标记为叶子(懒加载后确认没有下级)。 */
+  markLeaf(id: string): void {
+    const region = this.regions.get(id);
+    if (region) region.expandable = false;
   }
 
   hasLoadedChildren(id: string): boolean {

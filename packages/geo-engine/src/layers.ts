@@ -31,6 +31,8 @@ export interface LayerSpec<TData = unknown, TStyle = Record<string, unknown>> {
   style?: TStyle;
   /** 交互:是否可拾取(悬停/点击)。 */
   pickable?: boolean;
+  /** 数据版权 / 审图号;图层可见时汇总进 frame.attributions(如底图服务商)。 */
+  attribution?: string;
 }
 
 export function levelOf(drill: DrillState): string {

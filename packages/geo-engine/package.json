@@ -8,7 +8,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "rm -rf dist && esbuild src/index.ts --bundle --format=esm --platform=neutral --target=es2022 --sourcemap --outfile=dist/index.js && tsc -p tsconfig.build.json",
+    "build": "rm -rf dist && esbuild src/index.ts --bundle --format=esm --platform=neutral --target=es2022 --sourcemap --external:@yaoyu/geo-data --outfile=dist/index.js && tsc -p tsconfig.build.json",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "prepack": "pnpm build"
@@ -32,5 +32,8 @@
       }
     },
     "types": "./dist/index.d.ts"
+  },
+  "dependencies": {
+    "@yaoyu/geo-data": "workspace:*"
   }
 }

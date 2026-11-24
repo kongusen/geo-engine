@@ -21,5 +21,5 @@ if (!process.argv.includes("--skip-checks")) {
   run(["-r", "typecheck"]);
   run(["-r", "test"]);
 }
-for (const pkg of ["geo-engine", "geo-engine-three"]) run(["pack", "--pack-destination", out], resolve(root, "packages", pkg));
+for (const pkg of ["geo-data", "geo-engine", "geo-engine-three"]) run(["pack", "--pack-destination", out], resolve(root, "packages", pkg));
 console.log(`\n已输出到 ${out}:\n  ${readdirSync(out).filter((f) => f.endsWith(".tgz")).join("\n  ")}`);

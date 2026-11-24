@@ -27,7 +27,16 @@ export interface Region {
   areaKm2: number;
   /** 子级尚未加载但存在(懒加载数据源用)。 */
   expandable?: boolean;
+  /** 来源:提供该区域的数据源 id 与源内原始编码(经 IdMapper 映射前)。直接 addRegions 的区域没有此字段。 */
+  source?: RegionSourceRef;
   properties: Record<string, unknown>;
+}
+
+export interface RegionSourceRef {
+  /** 数据源 id。 */
+  id: string;
+  /** 源内原始编码。 */
+  localId: string;
 }
 
 /** 构建区域所需的最小输入;几何派生字段由引擎计算。 */
@@ -39,6 +48,7 @@ export interface RegionInput {
   level?: string;
   polygons: MultiPolygonCoords;
   expandable?: boolean;
+  source?: RegionSourceRef;
   properties?: Record<string, unknown>;
 }
 
@@ -60,7 +70,8 @@ export interface GeoIssue {
     | "missing-parent"
     | "parent-inferred"
     | "parent-not-found"
-    | "invalid-input";
+    | "invalid-input"
+    | "id-collision";
   message: string;
   featureIndex?: number;
   regionId?: string;

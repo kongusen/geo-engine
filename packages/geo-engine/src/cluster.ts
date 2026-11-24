@@ -1,4 +1,4 @@
-import type { Position } from "./types";
+import type { Position } from "@yaoyu/geo-data";
 
 export interface ClusterInput {
   id: string;

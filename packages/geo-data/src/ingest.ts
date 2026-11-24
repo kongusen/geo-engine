@@ -238,6 +238,7 @@ export function toRegion(input: RegionInput): Region {
     anchor: interiorPoint(input.polygons),
     areaKm2: areaKm2(input.polygons),
     expandable: input.expandable,
+    source: input.source,
     properties: input.properties ?? {},
   };
 }

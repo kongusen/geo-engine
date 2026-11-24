@@ -1,8 +1,5 @@
-export * from "./types";
-export * from "./geometry";
-export * from "./crs";
-export * from "./topojson";
-export * from "./ingest";
+// 数据层(类型、几何、坐标系、ingest、数据源契约)整体转出,保持旧的导入路径可用
+export * from "@yaoyu/geo-data";
 export * from "./region-tree";
 export * from "./events";
 export * from "./drill";

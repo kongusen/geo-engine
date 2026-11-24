@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { GeoEngine, type EngineFrame, type GeoSource } from "../engine";
-import type { RegionInput } from "../types";
+import type { RegionInput } from "@yaoyu/geo-data";
 import { box, feature, rect } from "./fixtures";
 
 /** 模拟按父级懒加载的数据源:地球 → 国家 → 省 → 县(县为 GeoJSON,无父级字段)。 */

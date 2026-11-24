@@ -1,4 +1,4 @@
-import type { MultiPolygonCoords, RegionInput, Ring } from "../types";
+import type { MultiPolygonCoords, RegionInput, Ring } from "@yaoyu/geo-data";
 
 /** 逆时针矩形环。 */
 export function rect(x0: number, y0: number, x1: number, y1: number): Ring {

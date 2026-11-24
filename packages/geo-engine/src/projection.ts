@@ -1,4 +1,4 @@
-import type { BBox, Position } from "./types";
+import { pointInMultiPolygon, type BBox, type Position, type Region } from "@yaoyu/geo-data";
 
 /**
  * 坐标约定(与 three.js 一致,y 轴向上):
@@ -150,6 +150,30 @@ export function bboxView(bbox: BBox): { center: Position; angularRadius: number 
 export function viewFor(bbox: BBox | null, thresholds: SceneThresholds = {}): ViewTarget {
   if (!bbox) return { scene: "globe", center: [105, 30], angularRadius: Math.PI / 2 };
   const { center, angularRadius } = bboxView(bbox);
+  const limit = (thresholds.globeAboveDegrees ?? 40) * DEG;
+  return { scene: angularRadius > limit ? "globe" : "plane", center, angularRadius };
+}
+
+/**
+ * 区域的视图目标。外接矩形中心落在区域之外时(如美国含阿拉斯加、夏威夷,外接矩形中心在太平洋),
+ * 改用面积加权质心;质心也在区域外时用内部点。角半径按新中心重新估算。
+ */
+export function viewForRegion(region: Pick<Region, "bbox" | "polygons" | "centroid" | "anchor">, thresholds: SceneThresholds = {}): ViewTarget {
+  const base = viewFor(region.bbox, thresholds);
+  if (pointInMultiPolygon(base.center, region.polygons)) return base;
+  const center = pointInMultiPolygon(region.centroid, region.polygons) ? region.centroid : region.anchor;
+  const [minX, minY, maxX, maxY] = region.bbox;
+  const probes: Position[] = [
+    [minX, minY],
+    [minX, maxY],
+    [maxX, minY],
+    [maxX, maxY],
+    [center[0], minY],
+    [center[0], maxY],
+    [minX, center[1]],
+    [maxX, center[1]],
+  ];
+  const angularRadius = Math.max(...probes.map((p) => angularDistance(center, p)));
   const limit = (thresholds.globeAboveDegrees ?? 40) * DEG;
   return { scene: angularRadius > limit ? "globe" : "plane", center, angularRadius };
 }

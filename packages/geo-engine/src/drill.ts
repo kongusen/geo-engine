@@ -1,6 +1,6 @@
 import { Emitter } from "./events";
 import type { RegionTree } from "./region-tree";
-import type { Region } from "./types";
+import type { Region } from "@yaoyu/geo-data";
 
 /** 当前聚焦的区域;null 表示最顶层(如整个地球 / 未设根时的全部根节点)。 */
 export interface DrillState {
@@ -39,13 +39,19 @@ export interface DrillOptions {
   guards?: DrillGuard[];
   /** 允许把叶子作为下钻目标(聚焦单个最小级区域以切换图层,如乡镇 → 乡镇内点位)。默认 false。 */
   allowLeafFocus?: boolean;
+  /**
+   * 目标不在树中时调用,负责把它及祖先链加载进树(懒加载数据源的深链接、URL 恢复、跨级跳转)。
+   * 抛出 PathUnresolvedError 记为 blocked: "unknown",其他错误记为 blocked: "error"。
+   */
+  resolvePath?: (id: string) => Promise<unknown>;
   /** 叶子判定(默认 tree.isLeaf)。引擎据此支持"视图叶子层级":如全国门店视图把省当作叶子。 */
   isLeaf?: (id: string) => boolean;
 }
 
 type DrillEvents = {
   change: DrillChange;
-  loading: { targetId: string | null; loading: boolean };
+  /** phase:"path" 为定位祖先链(深链接),"children" 为加载目标的子级。 */
+  loading: { targetId: string | null; loading: boolean; phase: "path" | "children" };
   blocked: { targetId: string | null; reason: "guard" | "max-depth" | "leaf" | "out-of-root" | "unknown" | "error"; error?: unknown };
 };
 
@@ -142,6 +148,26 @@ export class DrillController {
     const token = ++this.token;
     const from = this.state;
 
+    if (id !== null && !this.tree.has(id) && this.options.resolvePath) {
+      // 先结束 loading 再报告结果:宿主常在 loading 结束时清空提示,顺序反过来会把错误提示一起清掉
+      this.events.emit("loading", { targetId: id, loading: true, phase: "path" });
+      let failure: unknown = null;
+      try {
+        await this.options.resolvePath(id);
+      } catch (error) {
+        failure = error ?? new Error("resolvePath 失败");
+      }
+      this.events.emit("loading", { targetId: id, loading: false, phase: "path" });
+      if (failure) {
+        if (token === this.token) {
+          const unresolved = failure instanceof PathUnresolvedError;
+          this.events.emit("blocked", { targetId: id, reason: unresolved ? "unknown" : "error", error: unresolved ? undefined : failure });
+        }
+        return false;
+      }
+      if (token !== this.token) return false;
+    }
+
     const target = id ? this.tree.get(id) ?? null : null;
     if (id !== null && !target) {
       this.events.emit("blocked", { targetId: id, reason: "unknown" });
@@ -178,14 +204,17 @@ export class DrillController {
     }
 
     if (id && this.options.loadChildren && !this.tree.hasLoadedChildren(id) && !this.isLeaf(id)) {
-      this.events.emit("loading", { targetId: id, loading: true });
+      this.events.emit("loading", { targetId: id, loading: true, phase: "children" });
+      let failure: unknown = null;
       try {
         await this.options.loadChildren(id);
       } catch (error) {
-        if (token === this.token) this.events.emit("blocked", { targetId: id, reason: "error", error });
+        failure = error ?? new Error("loadChildren 失败");
+      }
+      this.events.emit("loading", { targetId: id, loading: false, phase: "children" });
+      if (failure) {
+        if (token === this.token) this.events.emit("blocked", { targetId: id, reason: "error", error: failure });
         return false;
-      } finally {
-        this.events.emit("loading", { targetId: id, loading: false });
       }
       if (token !== this.token) return false;
     }
@@ -193,5 +222,13 @@ export class DrillController {
     this.focus = id;
     this.events.emit("change", { from, to: this.stateFor(id), direction });
     return true;
+  }
+}
+
+/** 无法解析区域路径:没有数据源认识该编码,或数据与祖先链对不上。 */
+export class PathUnresolvedError extends Error {
+  constructor(readonly regionId: string, detail?: string) {
+    super(`无法定位区域 ${regionId}${detail ? `:${detail}` : ""}`);
+    this.name = "PathUnresolvedError";
   }
 }

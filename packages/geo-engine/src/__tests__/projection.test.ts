@@ -74,3 +74,18 @@ describe("projection", () => {
     expect(cameraDistance(Math.PI / 2, 45, 16 / 9, 1.1, "globe")).toBeGreaterThan(2);
   });
 });
+
+describe("viewForRegion", () => {
+  it("外接矩形中心在区域外时改用质心;紧凑区域保持外接矩形中心", async () => {
+    const { viewForRegion, viewFor } = await import("../projection");
+    const { toRegion } = await import("@yaoyu/geo-data");
+    const box = (x0: number, y0: number, x1: number, y1: number) => [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]] as [number, number][][];
+    // 本土 + 远处小岛:外接矩形中心落在海上
+    const split = toRegion({ id: "US", name: "US", polygons: [box(-125, 25, -67, 49), box(-160, 19, -155, 22)] });
+    const v = viewForRegion(split);
+    expect(v.center[0]).toBeGreaterThan(-125);
+    expect(v.center[0]).toBeLessThan(-67);
+    const compact = toRegion({ id: "C", name: "C", polygons: [box(100, 20, 110, 30)] });
+    expect(viewForRegion(compact)).toEqual(viewFor(compact.bbox));
+  });
+});
