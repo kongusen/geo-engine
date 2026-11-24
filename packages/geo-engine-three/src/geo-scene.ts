@@ -224,6 +224,8 @@ interface Plate {
 interface LevelView {
   uid: number;
   focusId: string | null;
+  /** 聚焦的是叶子区域本身(没有下级):区域作为主体完整呈现,而不是"不可下钻的子级"。 */
+  leafFocus: boolean;
   group: THREE.Group;
   plates: Map<string, Plate>;
   base: THREE.Mesh | null;
@@ -282,6 +284,11 @@ void main() {
 
 const LABEL_COLLISION_EVERY = 6;
 const PLANE_GLOBE_OPACITY = 0.22;
+/**
+ * 平面模式下地球背景(海陆轮廓)随视野尺度淡出的角半径区间(弧度)。地球数据是全球尺度的粗精度轮廓,
+ * 区县 / 乡镇尺度下放大后只剩失真的锯齿线和错位的海岸,不再提供地理参照,此时应交给底图或留空。
+ */
+const BACKDROP_FADE: [number, number] = [0.004, 0.012];
 let viewSeq = 0;
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
@@ -490,6 +497,7 @@ export class GeoScene implements SceneAdapter {
     if (old) this.exitView(old, goingUp, frame.drill.focusId);
     this.enterView(next, !!old, goingUp);
     this.flyTo(this.planePose(next), !!old);
+    this.fadeBackdrop(this.backdropOpacity(next), !!old);
   }
 
   /** 注册叠加图层插件(同 type 覆盖)。已显示的图层在下一次数据更新时生效。 */
@@ -682,6 +690,29 @@ export class GeoScene implements SceneAdapter {
   private zoomDuration(base: number, from: CameraPose, to: CameraPose): number {
     const ratio = from.position.distanceTo(from.target) / Math.max(1e-9, to.position.distanceTo(to.target));
     return base * Math.min(2.2, Math.max(1, 0.55 + 0.45 * Math.abs(Math.log10(ratio))));
+  }
+
+  /** 该层级下地球背景应有的透明度:城市及以上尺度保持,区县 / 乡镇尺度淡出。 */
+  private backdropOpacity(view: LevelView): number {
+    const angular = view.radius / this.R;
+    const [lo, hi] = BACKDROP_FADE;
+    const k = clamp01((angular - lo) / (hi - lo));
+    return PLANE_GLOBE_OPACITY * k * k * (3 - 2 * k);
+  }
+
+  private fadeBackdrop(target: number, animate: boolean): void {
+    const globe = this.globe;
+    if (!globe) return;
+    // 从实际透明度出发:上一次淡入 / 淡出可能还没走完(如进入区县途中立即返回)
+    this.animator.cancel("backdrop");
+    const from = globe.currentOpacity;
+    if (!animate || Math.abs(target - from) < 1e-4) {
+      globe.setOpacity(target);
+      return;
+    }
+    // 上卷时快速恢复:旧层级板块退场、新层级尚未落下的间隙里背景不能是空的(否则闪一下全暗);下钻时随镜头慢慢淡出
+    const T = this.options.transitionMs ?? 1200;
+    this.animator.add({ duration: target > from ? T * 0.2 : T, update: (k) => globe.setOpacity(from + (target - from) * k) }, "backdrop");
   }
 
   private flyTo(pose: CameraPose, animate: boolean): void {
@@ -879,6 +910,7 @@ export class GeoScene implements SceneAdapter {
         this.setViewOpacity(view, 0);
         const from = this.currentPose();
         const to = this.planePose(view);
+        const backdrop = this.backdropOpacity(view);
         globe.setMarkersVisible(false);
         this.animator.add({
           duration: this.zoomDuration(T * 0.62, from, to),
@@ -889,7 +921,7 @@ export class GeoScene implements SceneAdapter {
             view.morph.uMorph.value = easeInOutCubic(clamp01((t - 0.12) / 0.88));
             this.setViewOpacity(view, clamp01(t * 3));
             if (enteringId) globe.setRegionFade(enteringId, 1 - clamp01(t * 2.5));
-            globe.setOpacity(1 - (1 - PLANE_GLOBE_OPACITY) * k);
+            globe.setOpacity(1 - (1 - backdrop) * k);
             globe.setAnchor(anchor, k);
           },
           done: () => {
@@ -930,6 +962,8 @@ export class GeoScene implements SceneAdapter {
     const anchor = this.anchor!;
     const d0 = from.position.distanceTo(from.target);
     const d1 = to.position.distanceTo(to.target);
+    this.animator.cancel("backdrop");
+    const backdrop = globe.currentOpacity;
     this.animator.add({
       duration: this.zoomDuration(T * 0.7, from, to),
       ease: (t) => t,
@@ -947,7 +981,7 @@ export class GeoScene implements SceneAdapter {
           markers = true;
           globe.setMarkersVisible(true);
         }
-        globe.setOpacity(PLANE_GLOBE_OPACITY + (1 - PLANE_GLOBE_OPACITY) * k);
+        globe.setOpacity(backdrop + (1 - backdrop) * k);
         globe.setAnchor(anchor, 1 - k);
         if (topId) globe.setRegionFade(topId, clamp01((t - 0.45) / 0.55));
       },
@@ -1017,6 +1051,7 @@ export class GeoScene implements SceneAdapter {
     const view: LevelView = {
       uid: ++viewSeq,
       focusId: frame.drill.focusId,
+      leafFocus,
       group,
       plates: new Map(),
       base: null,
@@ -1137,7 +1172,8 @@ export class GeoScene implements SceneAdapter {
       const t = value !== null ? scale.position(value) : 0;
       plate.value = value;
       if (guide) {
-        const drillable = this.hasChildren(plate.region.id);
+        // 聚焦叶子时它就是主体,按"可下钻"的醒目样式呈现,而不是作为暗淡的末级子块
+        const drillable = view.leafFocus || this.hasChildren(plate.region.id);
         plate.color = new THREE.Color(mixColor(this.theme.plateLow, this.theme.accent, drillable ? 0.95 : 0.4));
         plate.height = view.unitHeight * (drillable ? 1.6 : 0.6);
       } else {

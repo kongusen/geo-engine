@@ -360,6 +360,11 @@ export class GlobeLayer {
     this.repaint();
   }
 
+  /** 当前整体透明度。 */
+  get currentOpacity(): number {
+    return this.opacity;
+  }
+
   /** 整体透明度(0..1)。 */
   setOpacity(k: number): void {
     this.opacity = k;
