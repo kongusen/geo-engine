@@ -1,159 +1,235 @@
-# @yaoyu/geo-engine-three
+# @yaoyu/geo-engine-three（渲染层）
 
-`@yaoyu/geo-engine` 的 three.js 渲染器。它提供一个风格化的大屏地理场景：全球层级显示为地球，区域层级显示为 3D 挤出板块，两者之间有连续的变形转场。
+`@yaoyu/geo-engine` 的 three.js 渲染器，提供风格化的大屏地理场景：
+
+- 顶层和大区域显示为**可旋转、可点击的地球**；
+- 国家及以下显示为 **3D 挤出板块**；
+- 两者之间有连续的变形转场。
+
+依赖：`@yaoyu/geo-engine`，以及 peer 依赖 `three >= 0.170`。
+
+- [最小接入](#最小接入)
+- [场景选项 GeoSceneOptions](#场景选项-geosceneoptions)
+- [大屏部署：SceneHost](#大屏部署scenehost)
+- [场景方法](#场景方法)
+- [内置图层](#内置图层)
+- [瓦片底图 basemap](#瓦片底图-basemap)
+- [主题](#主题)
+- [交互](#交互)
+- [自定义叠加图层插件](#自定义叠加图层插件)
+- [巡检与自动化检查](#巡检与自动化检查)
+
+## 最小接入
 
 ```ts
-const engine = new GeoEngine({ /* 区域、数据源、图层 */ });
-const scene = new GeoScene({
-  container,
-  engine,
-  theme: { accent: "#10b981", background: null }, // background 设为 null 时背景透明（同时关闭泛光）
-  globe: { land },                                 // 不传 globe 时为纯平面场景
+import { GeoEngine } from "@yaoyu/geo-engine";
+import { SceneHost } from "@yaoyu/geo-engine-three";
+
+const engine = new GeoEngine({ sources: [...], layers: [{ id: "labels", type: "label" }] });
+const host = new SceneHost({
+  container: document.getElementById("map")!,   // 场景会铺满容器;容器需要有确定的宽高
+  engine,                                        // 构造时自动 engine.attach,点击 / 悬停自动回传引擎
+  theme: { accent: "#22d3ee" },
+  globe: { land: worldLandRings },               // 不传 globe 时所有层级按平面处理
 });
 await engine.start();
 ```
 
-## 开发演示页
+`globe.land` 是只用于装饰的陆地轮廓（`Position[][]`，不可交互），由接入方提供，比如从 Natural Earth 的陆地数据中抽取外环。可点击的国家、区域来自引擎的区域数据，和 `land` 无关。
 
-```bash
-pnpm playground   # http://localhost:5199(在仓库根目录执行)
+## 场景选项 GeoSceneOptions
+
+| 选项 | 默认 | 说明 |
+|---|---|---|
+| `container` / `engine` | 必填 | 挂载容器与引擎 |
+| `theme` | 见[主题](#主题) | 颜色与字体，可以只传 `accent`，其他颜色会自动派生 |
+| `globe` | 不启用 | `{ land?, autoRotateDegPerSec = 6, initialView = [105, 18], fill = 0.86 }`；传 `false` 或不传时为纯平面场景 |
+| `pitchDeg` | 38 | 平面场景相机与竖直方向的夹角，0 为正俯视 |
+| `fovDeg` | 30 | 视场角 |
+| `padding` | 1.08 | 区域装入视口时的留白系数 |
+| `viewportInset` | 无 | 平面视口四周留白 `{ top, right, bottom, left }`（CSS px）。全屏地图四周有 HUD 浮层时，让板块居中在中间的可见窗口里 |
+| `bloom` | true | 泛光；背景透明（`theme.background: null`）时自动关闭 |
+| `transitionMs` | 1200 | 下钻转场时长；地球 ↔ 平面转场约为它的 1.9 倍 |
+| `decor` | true | 底部装饰网格与扫描环 |
+| `maxPixelRatio` | 2 | 设备像素比上限，4K 大屏可以调低以保证帧率 |
+| `overlays` | — | 额外的叠加图层插件；与内置插件 `type` 相同时会覆盖内置的 |
+| `overlayZoomFade` | `[0.45, 0.2]` | 镜头远近于层级默认视距的一定比例时，叠加效果淡出，避免飞线等效果在下钻途中被放大成满屏光斑；`false` 关闭 |
+| `emptyClick` | `"none"` | 平面场景单击空白处的行为，`"drill-up"` 表示上卷一级 |
+| `onPointClick` / `onPointHover` | — | 内置 `point` 点位的点击 / 悬停回调 |
+| `attribution` | — | 角标里的固定文字，会和 `frame.attributions`（数据源与底图的版权）合并显示在右下角 |
+| `onContextLost` / `onContextRestored` | — | WebGL 上下文丢失 / 恢复（直接用 `GeoScene` 时需要宿主自行处理；用 `SceneHost` 时它会负责） |
+
+## 大屏部署：SceneHost
+
+**生产环境请用 `SceneHost` 代替直接 `new GeoScene`。** 它接受同样的场景选项，并负责故障恢复：
+
+```ts
+const host = new SceneHost(sceneOptions, {
+  onStatus: (status, error) => {},   // ready | recovering | failed;failed 时宿主应显示降级视图
+  restoreWaitMs: 2000,               // 上下文丢失后,等待浏览器恢复的时间
+  retryDelaysMs: [1500, 5000, 15000],// 创建失败时的重试间隔
+  failedRetryMs: 60000,              // 进入 failed 后,每隔多久再试一次;0 为不再尝试
+});
 ```
 
-演示页可以切换层级、开关各效果图层、启停自动巡游、切换主色。区域数据是 `playground/demo-data/` 下的快照（世界陆地、全国省级、从江乡镇，取自 yaoyu-data），业务数据是随机生成的示例。
+- **上下文丢失**：显卡重置、休眠唤醒等会导致 WebGL 上下文丢失。超过 `restoreWaitMs` 仍未恢复时，SceneHost 会在新画布上重建场景。引擎状态（层级、图层）不受影响。
+- **状态保持**：通过 `host` 调用的 `setAccent`、`setLabelsVisible`、`setViewportInset`、`setHighlight`、`registerOverlay`，重建后会自动恢复。
+- **其他接口**：`host.scene`（当前场景实例）、`host.state`、`host.rebuild()`、`host.dispose()`。
+- **页面不可见时**，场景停止渲染。
 
-## 图层
+## 场景方法
 
-图层由 `engine.setLayers([...])` 声明，`type` 决定由哪个实现渲染，`visible` 控制它在哪些层级、哪种场景下显示。
+`GeoScene` 和 `SceneHost` 都提供以下方法：
+
+| 方法 | 说明 |
+|---|---|
+| `setAccent(color)` | 运行时切换主色，派生色会一起更新 |
+| `setLabelsVisible(bool)` | 显示或隐藏全部文字标签 |
+| `setViewportInset(inset, animate = true)` | 动态调整视口留白 |
+| `setHighlight(regionId \| null)` | 从外部反向高亮并抬升指定区域，例如悬停在旁边的排行榜上时 |
+| `registerOverlay(plugin)` | 注册叠加图层插件 |
+| `stats()` | 运行状态快照：模式、焦点、是否在转场中、fps、几何体 / 纹理 / 着色器数、draw call、三角形数、标签 DOM 数、叠加图层数、上下文是否丢失 |
+| `dispose()` | 释放场景 |
+
+## 内置图层
+
+图层由 `engine.setLayers([...])` 声明（详见引擎层 README）：`type` 决定由哪个实现来画，`visible` 控制它在哪些层级、哪种场景下显示。
+
+尺寸参数都按当前层级的"特征长度"换算，所以同一套参数在全国、县、乡镇各级的视觉比例一致。
 
 | type | 场景 | data |
 |---|---|---|
-| `choropleth` | 平面 | `{ values: Record<regionId, number>, unit?, method?, extrudeByValue? }`：板块按数值着色、挤出 |
-| `label` | 平面 / 地球 | `{ showValue? }`：区域名称与数值，自动避让 |
-| `point` | 平面 / 地球 | `{ points: [{ id, name, position, label?, color? }] }`：脉冲点位 |
-| `line` | 平面 | `{ lines: Position[][] }`：线状装饰（如九段线） |
-| `flow` | 平面 / 地球 | `{ flows: [{ from, to, value?, color? }], speed?, arcHeight?, width?, trail? }`：OD 飞线，带彗星拖尾 |
-| `bar` | 平面 / 地球 | `{ bars: [{ position \| regionId, value, label? }], unit?, maxHeight? }`：3D 数值柱 |
-| `heat` | 平面 | `{ points: [{ position, weight? }], radius?, colors? }`：核密度热力图 |
-| `ripple` | 平面 / 地球 | `{ points: [{ position, color?, label? }], rings?, speed? }`：扩散波纹（告警、强调） |
-| `cluster` | 平面 | `{ points: [{ id, position, name? }], cellSize? }`：点位聚合，下钻后自然展开 |
-| `basemap` | 平面 | `{ sources: TileSource[], style?, extent?, zoomOffset?, maxTiles? }`：栅格瓦片底图，见下文 |
+| `choropleth` | 平面 | `{ values: Record<regionId, number>, unit?, method?, extrudeByValue = true }`：板块按数值着色、挤出。`method` 缺省时，值不少于 5 个用分位数，否则线性 |
+| `label` | 平面 / 地球 | `{ showValue?, format?(value, unit) }`：区域名称与数值，自动避让 |
+| `point` | 平面 / 地球 | `{ points: [{ id, name, position, label?, color? }] }`：脉冲点位。平面场景只显示落在当前板块内的点；点击回调用 `onPointClick` |
+| `line` | 平面 | `{ lines: Position[][], color?, width? }`：线状装饰，例如 `datavSource().decorations()` 取出的九段线 |
+| `flow` | 平面 / 地球 | `{ flows: [{ from, to, value?, color? }], color?, speed?, arcHeight?, width?, trail?, endpoints? }`：OD 飞线，带彗星拖尾 |
+| `bar` | 平面 / 地球 | `{ bars: [{ position? \| regionId?, value, label?, color? }], unit?, maxHeight?, width?, color?, showValue?, format? }`：3D 数值柱 |
+| `heat` | 平面 | `{ points: [{ position, weight? }], radius?, colors?, opacity?, resolution? }`：核密度热力图 |
+| `ripple` | 平面 / 地球 | `{ points: [{ position, color?, size?, label? }], rings?, speed?, color? }`：扩散波纹，用于告警、强调 |
+| `cluster` | 平面 | `{ points: [{ id, position, name?, weight? }], cellSize?, color?, showNames? }`：点位聚合，下钻后自然展开 |
+| `basemap` | 平面 | 瓦片底图，见下一节 |
 
-尺寸参数都相对当前层级的"特征长度"计算，所以同一套参数在全国、县、乡镇各级的视觉比例一致。
+**没有 `choropleth` 时的板块样式**：能下钻的板块更高、颜色更亮，提示用户可以点进去；不能下钻的板块较低、颜色较暗。
 
-## 底图
+**数据类型**：类型定义随包导出，分别是 `ChoroplethLayerData`、`LabelLayerData`、`PointLayerData`、`LineLayerData`、`FlowLayerData`、`BarLayerData`、`HeatLayerData`、`RippleLayerData`、`ClusterLayerData`、`BasemapLayerData`。
 
-在平面场景的板块下方铺一层在线地图瓦片。瓦片来源在 `@yaoyu/geo-data` 中定义：
+## 瓦片底图 basemap
+
+在平面场景的板块下方铺一层在线地图瓦片。瓦片来源由数据层的 `TileSource` 描述（`tianditu` / `amapTiles` / `xyzTiles`，或自定义）。
 
 ```ts
-import { tianditu, amapTiles, xyzTiles } from "@yaoyu/geo-engine";
+import { tianditu } from "@yaoyu/geo-engine";
 import { basemap } from "@yaoyu/geo-engine-three";
 
 engine.setLayers([
-  basemap(tianditu({ key, attribution: "© 天地图 GS(XXXX)XXXX号" }), {   // 底图 + 注记
-    style: { invert: 1, grayscale: 1, tint: "accent", tintAmount: 0.55, brightness: 0.85 },
+  basemap(tianditu({ key, attribution: "© 天地图 GS(XXXX)XXXX号" }), {   // 底图 + 注记,自下而上
+    style: { invert: 1, grayscale: 1, tint: "accent", tintAmount: 0.55, brightness: 0.85 },  // 深色大屏配浅色矢量底图
+    extent: 3,          // 铺设范围:当前层级范围的倍数(再按视野裁剪)
+    zoomOffset: 0,      // 正数更清晰、瓦片更多
+    maxTiles: 80,       // 每个图层、每一级的瓦片上限,超过时自动降一级
+    id: "basemap",
+    visible: { scenes: ["plane"] },
   }),
-  { id: "labels", type: "label" },
+  ...
 ]);
 ```
 
-- **服务商**：
-  - `tianditu()`：天地图，默认使用。可选矢量 / 影像 / 地形，以及球面墨卡托（`w`）或经纬度（`c`）瓦片。
-  - `amapTiles()`：高德，GCJ-02 坐标，会逐顶点纠偏到 WGS84。
-  - `xyzTiles(url)`：任意 XYZ 服务。
-  - 也可以通过 `TileSource.load` 自己接管请求，例如加鉴权、读离线包、自绘瓦片。
-- **级别与范围**：缩放级别按屏幕分辨率自动选择，瓦片只覆盖视野内、当前层级范围 `extent` 倍以内的区域。另外会多加载一层粗三级的瓦片垫底，精细瓦片没到之前先显示模糊版本。
-- **缓存**：纹理在各层级之间共享（LRU 上限 320 张），下钻、上卷都不会重复下载。
+- **选瓦片**：缩放级别按屏幕分辨率自动选择，只加载视野内的瓦片。最底层还会多加载一层粗三级的瓦片垫底，精细瓦片没到之前先显示模糊版本。注记层不会这样垫底，否则放大后会出现巨大的模糊文字。
+- **纠偏**：GCJ-02 的瓦片（如高德）逐顶点纠偏到 WGS84，和区域边界对齐。
+- **缓存**：纹理在各层级之间共享（LRU 上限 320 张），下钻、上卷不会重复下载。`basemapCacheStats()` 可以查看缓存状态。
 - **着色**（`style`）：
-  - `invert` / `grayscale` / `tint` / `brightness`：把底图调成和大屏主题协调的色调。
-  - `maxLuminance`：亮度上限，缺省 0.6。它让底图的亮度低于泛光阈值，避免浅色底图整片过曝。场景关闭了泛光的话，可以设为 1。
-- **转场**：底图只在平面场景显示，变形转场期间随层级淡出。镜头拉近时不会像其他效果那样淡出（插件声明了 `zoomFade: false`）。
-- **角标**：
-  - `basemap()` 会把各图层的 `attribution` 带到图层规格上，引擎汇总进 `frame.attributions`，场景右下角的角标自动显示。
-  - 角标内容是 `attribution` 选项，加上区域数据源和底图的版权信息。
-  - 对外公开展示时，审图号以服务商当年公布的为准，由业务侧填写。
+  - `opacity`、`invert`、`grayscale`、`tint`（颜色，或 `"accent"` 跟随主色）、`tintAmount`、`brightness`。
+  - `maxLuminance`，默认 0.6：亮度上限。它让底图不参与泛光，避免浅色底图整片过曝；关闭了泛光的场景可以设为 1。
+- **版权**：`basemap()` 会把各图层的 `attribution` 带到图层规格上，引擎汇总后，场景角标自动显示。
+- **显示范围**：底图只在平面场景显示，变形转场期间随层级淡出；镜头拉近时不淡出。
 
-## 自定义效果插件
+## 主题
 
 ```ts
+theme: {
+  accent: "#22d3ee",        // 主色:色阶高端、侧壁、点位;只传它时,边线和数值颜色自动由它派生
+  background: "#07111f",    // null = 透明背景(同时关闭泛光),用于叠在页面背景上
+  plateLow: "#0d2b3a",      // 色阶低端
+  plateEmpty: "#132236",    // 无数据板块
+  side: "#030b16",          // 侧壁底部
+  base: "#0b1e33",          // 父级底板
+  edge: "...",              // 板块边线(缺省由主色提亮)
+  highlight: "#fde68a",     // 悬停 / 聚焦高亮
+  point: "#fde68a",
+  label: "#eef6ff", labelValue: "...", labelShadow: "rgba(0,6,16,.95)",
+  fontFamily: '"PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
+}
+```
+
+`createTheme(partial)` 会返回补全派生色后的完整主题，`mixColor(a, b, t)` 用来混合两种颜色。
+
+## 交互
+
+- **悬停**：高亮区域，并回传 `engine.hover`。
+- **点击**：调用 `engine.activate`，能下钻就下钻；点击叶子是选中，通过 `engine.on("select")` 获取。
+- **返回上一级**：右键；平面场景双击空白处；或设置 `emptyClick: "drill-up"` 后单击空白处。
+- **地球模式**：可以拖拽旋转，无人操作时自转。
+- **大区域聚焦**：角半径超过 `globeAboveDegrees` 的区域（如美国、俄罗斯）聚焦后仍停留在地球模式。地球会转到区域中心并按大小拉近，聚焦期间停止自转；回到顶层时恢复整球视距。
+
+## 自定义叠加图层插件
+
+```ts
+import * as THREE from "three";
 import { defineOverlay, disposeTree } from "@yaoyu/geo-engine-three";
 
-const myLayer = defineOverlay<{ items: ... }>({
-  type: "my-effect",
+const myLayer = defineOverlay<{ items: Array<{ position: [number, number] }> }>({
+  type: "my-effect",          // 与 LayerSpec.type 对应
   modes: ["plane", "globe"],
+  zoomFade: true,             // 是否参与 overlayZoomFade;背景类图层(如底图)设为 false
   create(ctx, spec) {
     const group = new THREE.Group();
     ctx.group.add(group);
-    // ctx.position(lngLat, height)  地表位置（平面落在板块顶面，地球落在球面）
-    // ctx.up(lngLat)                该点的向上方向
-    // ctx.scale / ctx.unitHeight    尺寸基准
-    // ctx.label(text)               文字标签（自动参与避让）
-    // ctx.camera() / ctx.unproject 相机与平面坐标反算(按视野取数据时用)
+    for (const item of spec.data!.items) {
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(ctx.unitHeight), new THREE.MeshBasicMaterial({ color: ctx.theme.accent, transparent: true }));
+      mesh.position.copy(ctx.position(item.position, ctx.unitHeight));
+      group.add(mesh);
+    }
     return {
-      tick(t, dt) {},       // 每帧调用
-      setOpacity(k) {},     // 转场淡入淡出
-      update(spec) { return false; }, // 返回 false 时由场景销毁后重建
+      tick(t, dt) {},                      // 每帧调用
+      setOpacity(k) {},                    // 转场淡入淡出、视距淡出;scaleOpacity(group, k) 可以直接用
+      update(next) { return false; },      // 同一图层的数据更新;返回 false 时由场景销毁后重建
       dispose() { disposeTree(group); },
     };
   },
 });
 
-new GeoScene({ container, engine, overlays: [myLayer] }); // 也可以调用 scene.registerOverlay(myLayer)
+new GeoScene({ container, engine, overlays: [myLayer] });   // 或 scene.registerOverlay(myLayer)
 ```
 
-场景负责插件实例的生命周期：数据更新时调用 update 或重建；下钻转场时调用 setOpacity，并在变形期间隐藏；离开层级时调用 dispose。插件本身不需要关心层级切换。
+**插件上下文 `ctx`**：
 
-如果插件使用自定义 `ShaderMaterial`，需要加入 `LOGDEPTH` 中的片段，因为场景开启了对数深度缓冲，以兼顾地球尺度和地块尺度的深度精度。
+| 字段 | 说明 |
+|---|---|
+| `mode` / `group` / `theme` | 当前模式、挂载点、主题 |
+| `scale` / `unitHeight` | 尺寸基准：平面为层级外形半径，地球为球半径 |
+| `position(p, h?)` / `up(p)` | 地表位置（平面落在板块顶面，地球落在球面）及该点向上的方向 |
+| `contains(p)` / `region(id)` | 点是否落在当前显示的区域内；按 id 取区域 |
+| `planeXY(p)` / `unproject(x, y)` / `bounds` / `baseHeight` / `maxSurface` | 平面坐标的正算与反算、当前层级范围、板块底面和最高顶面（仅平面模式） |
+| `camera()` / `resolution()` | 相机与画布尺寸，需要按视野取数据时使用 |
+| `label(text, style?)` | 创建一个跟随 3D 位置的文字标签，自动参与避让 |
 
-## 场景方法
+**生命周期由场景负责**：数据更新时调用 `update` 或重建；下钻转场时调用 `setOpacity`，变形期间隐藏；离开层级时调用 `dispose`。插件不需要关心层级切换。
 
-- `setAccent(color)`：运行时切换主色。
-- `setLabelsVisible(bool)`：显示或隐藏全部文字标签。
-- `setViewportInset({ top?, right?, bottom?, left? }, animate?)`：动态调整平面视口四周留白（CSS px），在全屏底图存在浮层 HUD 时让 3D 地图居中适配中央开放窗口；`SceneHost` 重建后自动恢复。
-- `setHighlight(regionId | null)`：从外部（如周边排行条悬停）反向高亮并抬升指定区域板块或球面区块；`SceneHost` 重建后自动恢复。
-- `registerOverlay(plugin)`：注册叠加图层插件。
-- `stats()`：运行状态快照（帧率、几何体 / 纹理 / 着色器数、标签 DOM 数等），用于巡检和排查泄漏。
-- `dispose()`：释放场景。
+**工具函数**：`makeLabel`、`alignToUp`、`disposeTree`、`scaleOpacity`。
 
-其他选项：
+**自定义 `ShaderMaterial`** 需要加入 `LOGDEPTH` 里的片段：场景开启了对数深度缓冲，以同时兼顾地球尺度和地块尺度的深度精度。
 
-- `viewportInset`：初始平面视口四周留白 `{ top?, right?, bottom?, left? }`（CSS px）。
-- `emptyClick`：平面场景单击空白处行为，`"drill-up"` 上卷一级，默认 `"none"`。
-- `onPointClick` / `onPointHover`：点击或悬停内置 `point` 3D 点位标记（球茎 / 球头 / 地球点位）时的回调。
-- `attribution`：画布右下角角标的固定文字（会与帧中的数据版权、底图版权合并显示），例如审图号或“乡镇边界为示意”。公开展示含中国国界的地图必须标注审图号，具体文字由业务侧配置。
-- `overlayZoomFade`：镜头比当前层级默认视距近很多时，叠加效果会淡出，默认 `[0.45, 0.2]`，传 `false` 关闭。效果是按所在层级的尺寸绘制的，从地球一路下钻到县的过程中，地球上的飞线、涟漪会被放大成满屏光斑，这个选项就是为了避免这种情况。
+## 巡检与自动化检查
 
-## 大屏部署：用 SceneHost 挂载
-
-大屏无人值守时，应该用 `SceneHost` 代替直接 `new GeoScene`：
-
-```ts
-const host = new SceneHost(sceneOptions, { onStatus: (status) => { /* ready | recovering | failed */ } });
-host.setAccent("#f59e0b"); // 与 GeoScene 相同的方法；重建后会自动恢复
-```
-
-- 显卡重置、休眠唤醒等情况会导致 WebGL 上下文丢失。SceneHost 会先等浏览器恢复上下文，超过 2 秒仍未恢复，就在新画布上重建场景。引擎状态（当前层级、图层）不受影响。
-- 创建失败时按 1.5s、5s、15s 的间隔重试；仍然失败就进入 `failed`，宿主应显示降级视图。之后每 60 秒再试一次，成功后自动回到 `ready`。
-- 页面不可见时场景会停止渲染。
-
-## 自动化检查
+以下命令在仓库根目录执行，依赖开发演示页：
 
 ```bash
-pnpm visual-check                # 画面回归，约 1 分钟
-pnpm soak --minutes 600          # 长时间运行巡检，上线前在大屏主机上跑一晚
+pnpm playground          # http://localhost:5199 离线演示;/lazy.html 按需加载演示(?tk=<天地图 key>,?region=<id>)
+pnpm visual-check        # 画面回归,约 1 分钟
+pnpm soak --minutes 600  # 长时间运行巡检,上线前在大屏主机上跑一晚
 ```
 
-- **visual-check**：在演示页中依次跑以下场景：从地球下钻到县、乡镇往返、从县回到地球、模拟上下文丢失后重建并再次下钻。检查分两层：
-  - 截图检查，排除纯色、过曝、空画面；
-  - 帧缓冲逐帧采样，抓单帧闪黑。
-
-  截图对照页和 `result.json` 写到 `--out` 指定的目录。不通过时退出码为 1。
-- **soak**：用快速自动巡游反复下钻和上卷，每轮回到地球时采样资源占用，判断几何体、纹理、标签 DOM 数和 JS 堆是否持续增长。`--lose-every N` 表示每 N 轮模拟一次上下文丢失。结果写成 CSV，可以直接画曲线。
-- 两个脚本都优先使用本机 Chrome，走真实的 GPU 路径。没有本机 Chrome 时先运行 `pnpm exec playwright install chromium`。
-
-## 交互
-
-- 悬停高亮。
-- 点击可下钻区域时下钻；点击叶子区域时选中（`engine.on("select")`）。
-- 右键返回上一级；在平面中双击空白处也返回上一级。
-- 地球模式下可拖拽旋转，无人操作时自转。
-- 大区域（角半径超过 `globeAboveDegrees`，如美国、俄罗斯）聚焦后仍停留在地球模式。此时地球会转到区域中心并拉近，聚焦期间停止自转；回到顶层时恢复整球视距。区域中心取外接矩形中心，若它落在区域之外（例如美国本土加阿拉斯加、夏威夷，外接矩形中心在太平洋），改用质心。
+- **visual-check**：依次跑"地球下钻到县""乡镇往返""县回到地球""模拟上下文丢失后重建并再次下钻"这几个场景。检查分两层：截图检查，排除纯色、过曝、空画面；帧缓冲逐帧采样，抓单帧闪黑。不通过时退出码为 1，截图对照页写到 `--out` 指定的目录。
+- **soak**：用快速自动巡游反复下钻和上卷，每轮回到地球时采样资源占用，判断几何体、纹理、标签 DOM 数和 JS 堆是否持续增长。`--lose-every N` 表示每 N 轮模拟一次上下文丢失。结果写成 CSV。
+- **浏览器**：两个脚本都优先使用本机 Chrome，走真实的 GPU 路径。没有本机 Chrome 时，先运行 `pnpm exec playwright install chromium`。

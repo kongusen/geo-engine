@@ -1,6 +1,6 @@
 {
   "name": "@yaoyu/geo-engine",
-  "version": "0.4.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Renderer-agnostic GIS engine core: ingest any polygon GeoJSON/TopoJSON, region tree, drill state machine, data binding, globe↔plane projection math, plugins.",
