@@ -1,24 +1,8 @@
 import * as THREE from "three";
-import { densityGrid, type Position } from "@geodive/core";
+import { densityGrid, type HeatDatum, type HeatLayerData } from "@geodive/core";
 import { defineOverlay, disposeTree } from "../overlay";
 
-export interface HeatDatum {
-  position: Position;
-  weight?: number;
-}
-
-/** type: "heat" —— 核密度热力图(产量分布、客流密度),铺在当前层级上方。仅平面模式。 */
-export interface HeatLayerData {
-  points: HeatDatum[];
-  /** 影响半径(相对特征长度),默认 0.12。 */
-  radius?: number;
-  /** 色带(由低到高);默认 主色 → 黄 → 橙 → 红。 */
-  colors?: string[];
-  /** 整体不透明度,默认 0.85。 */
-  opacity?: number;
-  /** 网格分辨率(长边格数),默认 220。 */
-  resolution?: number;
-}
+export type { HeatDatum, HeatLayerData };
 
 /** 把密度网格着色为 RGBA 纹理数据(低密度透明)。 */
 export function colorizeDensity(values: Float32Array, max: number, colors: string[]): Uint8Array {

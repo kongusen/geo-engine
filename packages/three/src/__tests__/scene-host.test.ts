@@ -1,15 +1,39 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { GeoSceneOptions, SceneStats, ViewportInset } from "../geo-scene";
+import { Emitter, type Position } from "@geodive/core";
+import type {
+  AnchorOptions,
+  FitBoundsOptions,
+  FlyToOptions,
+  GeoSceneOptions,
+  MapClickEvent,
+  PlateStyleSpec,
+  SceneAnchor,
+  SceneCameraInfo,
+  SceneEventMap,
+  ScenePickEvent,
+  SceneStats,
+  SceneTransitionInfo,
+  ViewportInset,
+} from "../geo-scene";
 import { SceneHost, type HostedScene, type SceneHostStatus } from "../scene-host";
 
 type Fake = HostedScene & {
   options: GeoSceneOptions;
+  events: Emitter<SceneEventMap>;
   disposed: boolean;
   accent: string[];
   labels: boolean[];
   overlays: string[];
   insets: Array<{ inset: ViewportInset; animate?: boolean }>;
-  highlights: Array<string | null>;
+  plateStyles: Array<PlateStyleSpec | undefined>;
+  highlights: Array<string | string[] | null>;
+  flies: FlyToOptions[];
+  resets: boolean[];
+  fits: Array<{ positions: Position[]; options?: FitBoundsOptions }>;
+  pitches: Array<{ pitchDeg: number; animate?: boolean }>;
+  zooms: Array<{ factor: number; animate?: boolean }>;
+  anchors: Array<{ position: Position; element: HTMLElement; options?: AnchorOptions; disposed: boolean }>;
+  idleResolved: boolean;
 };
 
 function factory(failures: number[] = []) {
@@ -17,21 +41,67 @@ function factory(failures: number[] = []) {
   let call = 0;
   const createScene = (options: GeoSceneOptions): Fake => {
     if (failures.includes(call++)) throw new Error("Error creating WebGL context");
+    const events = new Emitter<SceneEventMap>();
     const scene: Fake = {
       options,
+      events,
       disposed: false,
       accent: [],
       labels: [],
       overlays: [],
       insets: [],
+      plateStyles: [],
       highlights: [],
+      flies: [],
+      resets: [],
+      fits: [],
+      pitches: [],
+      zooms: [],
+      anchors: [],
+      idleResolved: false,
       setAccent: (a) => scene.accent.push(a),
       setLabelsVisible: (v) => scene.labels.push(v),
       setViewportInset: (inset, animate) => scene.insets.push({ inset, animate }),
+      setPlateStyle: (style) => scene.plateStyles.push(style),
       setHighlight: (id) => scene.highlights.push(id),
+      flyTo: async (opts) => {
+        scene.flies.push(opts);
+      },
+      resetView: async (animate = true) => {
+        scene.resets.push(animate);
+      },
+      fitBounds: async (positions, opts) => {
+        scene.fits.push({ positions, options: opts });
+      },
+      setPitch: async (pitchDeg, animate) => {
+        scene.pitches.push({ pitchDeg, animate });
+      },
+      zoomBy: async (factor, animate) => {
+        scene.zooms.push({ factor, animate });
+      },
+      getCameraState: () => ({ mode: "plane", center: [102.7, 25], distance: 12, pitchDeg: 35, zoomRatio: 1.5 }),
+      project: () => ({ x: 120, y: 80, visible: true }),
+      unproject: () => [102.7, 25],
+      createAnchor: (position, element, opts): SceneAnchor => {
+        const rec = { position, element, options: opts, disposed: false };
+        scene.anchors.push(rec);
+        return {
+          setPosition: (p) => (rec.position = p),
+          setOffset: () => {},
+          setVisible: () => {},
+          dispose: () => (rec.disposed = true),
+        };
+      },
+      on: (ev, handler) => events.on(ev, handler),
+      whenIdle: async () => {
+        scene.idleResolved = true;
+      },
       registerOverlay: (p) => scene.overlays.push(p.type),
       stats: () => ({ fps: 60 }) as SceneStats,
-      dispose: () => void (scene.disposed = true),
+      dispose: () => {
+        scene.disposed = true;
+        events.clear();
+      },
     };
     created.push(scene);
     return scene;
@@ -110,5 +180,99 @@ describe("SceneHost", () => {
     vi.advanceTimersByTime(60000);
     expect(created).toHaveLength(1);
     expect(created[0].disposed).toBe(true);
+  });
+
+  it("转发异步相机 API 并在重建后保留 transition 监听", async () => {
+    const { created, createScene } = factory();
+    const starts: SceneTransitionInfo[] = [];
+    const ends: SceneTransitionInfo[] = [];
+    const host = new SceneHost(base, { createScene });
+    host.on("transitionstart", (i) => starts.push(i));
+    host.on("transitionend", (i) => ends.push(i));
+
+    await host.flyTo({ position: [102.7, 25.0], zoom: 3 });
+    await host.resetView(false);
+    await host.whenIdle();
+    expect(created[0].flies).toEqual([{ position: [102.7, 25.0], zoom: 3 }]);
+    expect(created[0].resets).toEqual([false]);
+    expect(created[0].idleResolved).toBe(true);
+
+    created[0].events.emit("transitionstart", { focusId: "530000", mode: "plane" });
+    created[0].events.emit("transitionend", { focusId: "530000", mode: "plane" });
+
+    // 上下文丢失并重建后,新场景仍转发到同一订阅者,旧场景被忽略
+    const stale = created[0];
+    stale.options.onContextLost!();
+    stale.options.onContextRestored!();
+    stale.events.emit("transitionstart", { focusId: "stale", mode: "plane" });
+    created[1].events.emit("transitionstart", { focusId: "530100", mode: "plane" });
+    created[1].events.emit("transitionend", { focusId: "530100", mode: "plane" });
+
+    expect(starts).toEqual([
+      { focusId: "530000", mode: "plane" },
+      { focusId: "530100", mode: "plane" },
+    ]);
+    expect(ends).toEqual([
+      { focusId: "530000", mode: "plane" },
+      { focusId: "530100", mode: "plane" },
+    ]);
+  });
+
+  it("转发并重建恢复 plateStyle / pitch / 多区域高亮 / DOM 锚点 / onLayer 与统一交互事件", async () => {
+    const { created, createScene } = factory();
+    const clicks: ScenePickEvent[] = [];
+    const markerClicks: Array<{ id: string }> = [];
+    const markerHovers: Array<string | null> = [];
+    const mapClicks: MapClickEvent[] = [];
+    const camChanges: SceneCameraInfo[] = [];
+
+    const host = new SceneHost(base, { createScene });
+    host.on("click", (e) => clicks.push(e));
+    host.on("mapclick", (e) => mapClicks.push(e));
+    host.on("camerachange", (e) => camChanges.push(e));
+    host.onLayer<{ id: string }>("mk", "click", (ev) => markerClicks.push(ev.item));
+    host.onLayer<{ id: string }>("mk", "hover", (ev) => markerHovers.push(ev?.item.id ?? null));
+
+    host.setPlateStyle("outline");
+    host.setHighlight(["530100", "530300"]);
+    await host.setPitch(12, false);
+    await host.zoomBy(2);
+    await host.fitBounds([
+      [102.6, 24.9],
+      [102.8, 25.1],
+    ]);
+    expect(host.getCameraState()?.mode).toBe("plane");
+    expect(host.project([102.7, 25])).toEqual({ x: 120, y: 80, visible: true });
+    expect(host.unproject(120, 80)).toEqual([102.7, 25]);
+
+    const popupEl = {} as HTMLElement;
+    const anchor = host.createAnchor([102.7, 25], popupEl, { align: "bottom" });
+    anchor.setPosition([102.75, 25.05]);
+    expect(created[0].anchors).toHaveLength(1);
+    expect(created[0].anchors[0].position).toEqual([102.75, 25.05]);
+
+    created[0].events.emit("click", { layerId: "mk", layerType: "marker", item: { id: "c1" }, screen: [10, 20] });
+    created[0].events.emit("hover", { layerId: "mk", layerType: "marker", item: { id: "c1" }, screen: [10, 20] });
+    created[0].events.emit("hover", { layerId: "other", layerType: "point", item: { id: "p1" }, screen: [15, 25] });
+    created[0].events.emit("mapclick", { position: [102.7, 25], screen: [10, 20], regionId: "530100", hit: null });
+    created[0].events.emit("camerachange", { mode: "plane", center: [102.7, 25], distance: 10, pitchDeg: 12, zoomRatio: 2 });
+
+    expect(clicks).toHaveLength(1);
+    expect(markerClicks).toEqual([{ id: "c1" }]);
+    expect(markerHovers).toEqual(["c1", null]);
+    expect(mapClicks).toHaveLength(1);
+    expect(camChanges).toHaveLength(1);
+
+    // 上下文丢失后重建:恢复 plateStyle / pitchDeg / 多选 highlight / DOM anchor
+    created[0].options.onContextLost!();
+    created[0].options.onContextRestored!();
+    expect(created[1].options.plateStyle).toBe("outline");
+    expect(created[1].options.pitchDeg).toBe(12);
+    expect(created[1].highlights).toEqual([["530100", "530300"]]);
+    expect(created[1].anchors).toHaveLength(1);
+    expect(created[1].anchors[0].position).toEqual([102.75, 25.05]);
+
+    anchor.dispose();
+    expect(created[1].anchors[0].disposed).toBe(true);
   });
 });

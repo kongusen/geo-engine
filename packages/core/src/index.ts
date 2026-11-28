@@ -6,6 +6,7 @@ export * from "./drill";
 export * from "./binding";
 export * from "./projection";
 export * from "./layers";
+export * from "./layer-data";
 export * from "./engine";
 export * from "./cluster";
 export * from "./density";

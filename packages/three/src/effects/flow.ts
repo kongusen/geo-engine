@@ -1,30 +1,8 @@
 import * as THREE from "three";
-import { angularDistance, greatCircle, type Position } from "@geodive/core";
+import { angularDistance, greatCircle, type FlowDatum, type FlowLayerData, type Position } from "@geodive/core";
 import { LOGDEPTH, alignToUp, defineOverlay, disposeTree, scaleOpacity, type OverlayContext } from "../overlay";
 
-export interface FlowDatum {
-  from: Position;
-  to: Position;
-  /** 数值:决定线宽(按本图层最大值归一)。 */
-  value?: number;
-  color?: string;
-}
-
-/** type: "flow" —— OD 飞线(原料调度、物流、客源),彗星拖尾沿弧线流动。 */
-export interface FlowLayerData {
-  flows: FlowDatum[];
-  color?: string;
-  /** 每秒流动圈数,默认 0.45。 */
-  speed?: number;
-  /** 弧高(相对两端距离),默认 0.28。 */
-  arcHeight?: number;
-  /** 线宽系数,默认 1。 */
-  width?: number;
-  /** 拖尾长度(占全程比例),默认 0.28。 */
-  trail?: number;
-  /** 终点涟漪,默认 true。 */
-  endpoints?: boolean;
-}
+export type { FlowDatum, FlowLayerData };
 
 const VERTEX = /* glsl */ `
 ${LOGDEPTH.vertexPars}

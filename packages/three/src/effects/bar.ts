@@ -1,29 +1,8 @@
 import * as THREE from "three";
-import type { Position } from "@geodive/core";
+import type { BarDatum, BarLayerData, Position } from "@geodive/core";
 import { LOGDEPTH, alignToUp, defineOverlay, disposeTree, scaleOpacity } from "../overlay";
 
-export interface BarDatum {
-  /** 直接给位置,或给区域 id(取区域锚点)。 */
-  position?: Position;
-  regionId?: string;
-  value: number;
-  label?: string;
-  color?: string;
-}
-
-/** type: "bar" —— 3D 数值柱(区域产值、企业规模)。 */
-export interface BarLayerData {
-  bars: BarDatum[];
-  /** 最高柱高(相对特征长度),默认 0.32。 */
-  maxHeight?: number;
-  /** 柱宽(相对特征长度),默认 0.022。 */
-  width?: number;
-  color?: string;
-  unit?: string;
-  /** 柱顶显示数值,默认 true。 */
-  showValue?: boolean;
-  format?: (value: number, unit?: string) => string;
-}
+export type { BarDatum, BarLayerData };
 
 const VERTEX = /* glsl */ `
 ${LOGDEPTH.vertexPars}

@@ -71,6 +71,7 @@ engine.dispose();              // 释放插件、渲染器与进行中的请求
 | `engine.ensurePath(id)` | 确保区域及其祖先链都已加载，返回路径 |
 | `engine.hover(id \| null)` / `engine.selection` | 悬停与选中状态 |
 | `engine.isLeaf(id)` / `setLeafLevels(levels)` | 叶子判定与视图叶子层级 |
+| `engine.visibleRegions(focusId?)` | 当前（或指定）聚焦节点在视图中应展示的区域列表 |
 
 **深链接定位**：目标区域还没加载时，`drillTo` / `restore` / 重定向 / `rootId` 会自动调用 `ensurePath`。它的做法是：
 1. 向数据源要祖先链；
@@ -119,12 +120,12 @@ const off = engine.on("drill", ({ from, to, direction }) => {});  // 返回取�
 图层是**声明式**的：引擎只负责判断图层在当前状态下是否可见，并计算差量；怎么画由渲染器根据 `type` 决定。
 
 ```ts
+import { GeoEngine, createLayer } from "@geodive/core";
+
 engine.setLayers([
-  {
+  createLayer("choropleth", {
     id: "sales",                  // 唯一 id;相同 id 在下钻前后视为同一图层(只更新,不重建)
-    type: "choropleth",           // 由渲染器解释,渲染层 README 列出了内置类型
     data: { values: { "520000": 120 } },
-    style: {},
     visible: {                    // 所有条件同时满足才可见;不配置即始终可见
       minDepth: 1, maxDepth: 3,   // 相对 rootId 的深度
       levels: ["province", "county"],   // 焦点区域的 level;顶层为 "root"
@@ -132,11 +133,19 @@ engine.setLayers([
       when: ({ drill, scene }) => drill.focusId !== "CHN",   // 自定义条件
     },
     attribution: "数据来源:某某局",     // 图层可见时进入 frame.attributions(如底图服务商)
-  },
+  }),
 ]);
+
+// 增量更新图层(不用每次重拼全部图层)
+engine.upsertLayer(createLayer("marker", { id: "cams", data: { markers: [...] } }));
+engine.patchLayer("cams", { data: { markers: nextMarkers } });
+engine.setLayers((prev) => prev.filter((l) => l.id !== "temp"));
+engine.removeLayer("temp");
 ```
 
-辅助函数：`isLayerVisible`、`activeLayers`、`diffLayers`（返回 enter / exit / update）、`levelOf(drill)`。
+辅助函数与类型：`createLayer`、`BuiltinLayerSpec`、`AnyLayerSpec`、`isLayerVisible`、`activeLayers`、`diffLayers`（返回 enter / exit / update）、`levelOf(drill)`。
+
+内置图层的数据类型（`ChoroplethLayerData`、`LabelLayerData`、`PointDatum`、`PointLayerData`、`LineLayerData`、`FlowDatum`、`FlowLayerData`、`BarDatum`、`BarLayerData`、`HeatDatum`、`HeatLayerData`、`RippleDatum`、`RippleLayerData`、`ClusterDatum`、`ClusterLayerData`、`BasemapStyle`、`BasemapLayerData`、`MarkerShape`、`MarkerDatum`、`MarkerLayerData`）均同时从 `@geodive/core` 与 `@geodive/three` 导出。
 
 ## 业务数据绑定与分级
 
@@ -149,7 +158,7 @@ const { values, unmatched } = bindData(engine.tree, rows, {
 });
 // unmatched 是没匹配上的行,可以用来做数据质量报告
 
-const cls = classify([...values.values()].map((v) => v.value), "quantile", 5);  // linear | equal | quantile | jenks
+const cls = classify([...values.values()].map((v) => v.value), "quantile", 5, { domain: [0, 100] });  // linear | equal | quantile | jenks;可传显式 domain 防止稀疏数据塌缩
 cls.position(42);      // 0..1,用于取色
 cls.classOf(42);       // 第几级(linear 返回 -1)
 const legend = legendFor(cls, ["#0d2b3a", "#22d3ee"]);   // [{ color, from, to }]
@@ -210,7 +219,7 @@ interface EngineFrame {
 
 `engine.tree` 提供以下能力：
 
-- **查询**：`get` / `has` / `all` / `roots` / `children` / `parent` / `path` / `depth` / `descendants` / `isAncestor`。
+- **查询**：`get` / `has` / `all` / `roots` / `children` / `visibleAt` / `parent` / `path` / `depth` / `descendants` / `isAncestor`。
 - **叶子与懒加载状态**：`isLeaf` / `hasLoadedChildren` / `markLeaf`。
 - **解析与定位**：
   - `resolve(key, withinId?)`：按编码、名称、别名解析区域；

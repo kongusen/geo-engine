@@ -51,6 +51,8 @@ await engine.start();
 | `theme` | 见[主题](#主题) | 颜色与字体，可以只传 `accent`，其他颜色会自动派生 |
 | `globe` | 不启用 | `{ land?, autoRotateDegPerSec = 6, initialView = [105, 18], fill = 0.86 }`；传 `false` 或不传时为纯平面场景 |
 | `pitchDeg` | 38 | 平面场景相机与竖直方向的夹角，0 为正俯视 |
+| `plateStyle` | `"auto"` | `"auto"` 时随激活的 `basemap` 自动切换（无底图用 `solid`、有底图且无 `choropleth` 用 `outline`、同时有 `choropleth` 用 `translucent`，亦可由 `basemap(..., { plateStyle })` 指定）；也可显式传 `"solid"` / `"translucent"` / `"outline"` 或 `(frame) => ...` |
+| `cameraControl` | `true` | 平面场景相机交互：`{ pan, zoom, minZoomScale, maxZoomScale, zoomSpeed, tilt, pitchRange }`；传 `false` 关闭 |
 | `fovDeg` | 30 | 视场角 |
 | `padding` | 1.08 | 区域装入视口时的留白系数 |
 | `viewportInset` | 无 | 平面视口四周留白 `{ top, right, bottom, left }`（CSS px）。全屏地图四周有 HUD 浮层时，让板块居中在中间的可见窗口里 |
@@ -60,8 +62,7 @@ await engine.start();
 | `maxPixelRatio` | 2 | 设备像素比上限，4K 大屏可以调低以保证帧率 |
 | `overlays` | — | 额外的叠加图层插件；与内置插件 `type` 相同时会覆盖内置的 |
 | `overlayZoomFade` | `[0.45, 0.2]` | 镜头远近于层级默认视距的一定比例时，叠加效果淡出，避免飞线等效果在下钻途中被放大成满屏光斑；`false` 关闭 |
-| `emptyClick` | `"none"` | 平面场景单击空白处的行为，`"drill-up"` 表示上卷一级 |
-| `onPointClick` / `onPointHover` | — | 内置 `point` 点位的点击 / 悬停回调 |
+| `drillUpOn` | `{ emptyClick: false, doubleClick: true, contextMenu: true }` | 细粒度控制空白/手势上卷；传 `false` 可彻底禁用空白单击、双击和右键上卷 |
 | `attribution` | — | 角标里的固定文字，会和 `frame.attributions`（数据源与底图的版权）合并显示在右下角 |
 | `onContextLost` / `onContextRestored` | — | WebGL 上下文丢失 / 恢复（直接用 `GeoScene` 时需要宿主自行处理；用 `SceneHost` 时它会负责） |
 
@@ -92,9 +93,20 @@ const host = new SceneHost(sceneOptions, {
 | `setAccent(color)` | 运行时切换主色，派生色会一起更新 |
 | `setLabelsVisible(bool)` | 显示或隐藏全部文字标签 |
 | `setViewportInset(inset, animate = true)` | 动态调整视口留白 |
-| `setHighlight(regionId \| null)` | 从外部反向高亮并抬升指定区域，例如悬停在旁边的排行榜上时 |
+| `setPlateStyle(style)` | 运行时切换板块呈现样式（如进入详图模式切换为 `"outline"`） |
+| `setHighlight(regionId \| ids \| null)` | 从外部反向高亮并抬升一个或多个指定区域，例如悬停在旁边的排行榜或联动筛选时 |
+| `flyTo({ position, zoom?, distance?, pitchDeg?, durationMs?, animate? })` | 将相机平滑定位到指定经纬度点位，返回 `Promise<void>` |
+| `fitBounds(positions, { padding?, maxZoom?, pitchDeg?, durationMs?, animate? })` | 将相机适配到一组经纬度点位，返回 `Promise<void>` |
+| `setPitch(pitchDeg, animate = true)` / `zoomBy(factor, animate = true)` | 调整平面俯仰角 / 按倍率缩放当前视距，返回 `Promise<void>` |
+| `getCameraState()` | 获取当前相机模式、中心经纬度、视距、俯仰角与缩放倍率 |
+| `project(position, heightOffset?)` / `unproject(x, y)` | 经纬度 ↔ 画布 CSS 像素坐标互转 |
+| `createAnchor(position, element, { offset?, align?, heightOffset?, visible? })` | 将任意业务 DOM（如 Vue/React 详情弹窗）锚定到经纬度并随相机同步位置（`SceneHost` 重建自动恢复） |
+| `resetView(animate = true)` | 恢复当前层级的默认适配视角，返回 `Promise<void>` |
+| `on(event, handler)` | 订阅统一场景事件：`click` / `hover` / `mapclick` / `camerachange` / `transitionstart` / `transitionend` |
+| `onLayer(layerId, "click" \| "hover", handler)` | 按图层 id 订阅点击或悬停事件（离开该图层时自动派发 `null`） |
+| `whenIdle()` | 返回在当前转场结束后 resolve 的 Promise |
 | `registerOverlay(plugin)` | 注册叠加图层插件 |
-| `stats()` | 运行状态快照：模式、焦点、是否在转场中、fps、几何体 / 纹理 / 着色器数、draw call、三角形数、标签 DOM 数、叠加图层数、上下文是否丢失 |
+| `stats()` | 运行状态快照：模式、焦点、是否在转场中（`busy` / `transitioning`）、fps、几何体 / 纹理 / 着色器数、draw call、三角形数、标签 DOM 数、叠加图层数、上下文是否丢失 |
 | `dispose()` | 释放场景 |
 
 ## 内置图层
@@ -105,20 +117,21 @@ const host = new SceneHost(sceneOptions, {
 
 | type | 场景 | data |
 |---|---|---|
-| `choropleth` | 平面 | `{ values: Record<regionId, number>, unit?, method?, extrudeByValue = true }`：板块按数值着色、挤出。`method` 缺省时，值不少于 5 个用分位数，否则线性 |
+| `choropleth` | 平面 | `{ values: Record<regionId, number>, unit?, method?, extrudeByValue = true, domain?, flatPosition? }`：板块按数值着色、挤出。`method` 缺省时，值不少于 5 个用分位数，否则线性；可传 `domain: [min, max]` 或 `flatPosition`（默认 0.55）避免所有值相同时色阶塌缩 |
 | `label` | 平面 / 地球 | `{ showValue?, format?(value, unit) }`：区域名称与数值，自动避让 |
-| `point` | 平面 / 地球 | `{ points: [{ id, name, position, label?, color? }] }`：脉冲点位。平面场景只显示落在当前板块内的点；点击回调用 `onPointClick` |
+| `point` | 平面 / 地球 | `{ points: [{ id, name, position, label?, color?, size?, meta? }], size?, minPixelSize = 8 }`：脉冲点位（亦兼容 `style.pointSize`），按 `minPixelSize` 保底屏幕像素直径。平面场景只显示落在当前板块内的点；通过 `onLayer(id, ...)` 或 `on("click" / "hover")` 拾取 |
+| `marker` | 平面 / 地球 | `{ markers: [{ id, position, name?, category?, icon?, shape?, color?, sizePx = 28, badge?, label?, active?, meta? }], icon?, shape?, color?, sizePx?, clipToRegions = false, labelOnHover = false }`：Sprite 自定义图标/多分类点位（同图标/形状复用纹理、支持增量 `update()`），屏幕像素等大且支持统一拾取 |
 | `line` | 平面 | `{ lines: Position[][], color?, width? }`：线状装饰，例如 `datavSource().decorations()` 取出的九段线 |
 | `flow` | 平面 / 地球 | `{ flows: [{ from, to, value?, color? }], color?, speed?, arcHeight?, width?, trail?, endpoints? }`：OD 飞线，带彗星拖尾 |
 | `bar` | 平面 / 地球 | `{ bars: [{ position? \| regionId?, value, label?, color? }], unit?, maxHeight?, width?, color?, showValue?, format? }`：3D 数值柱 |
 | `heat` | 平面 | `{ points: [{ position, weight? }], radius?, colors?, opacity?, resolution? }`：核密度热力图 |
 | `ripple` | 平面 / 地球 | `{ points: [{ position, color?, size?, label? }], rings?, speed?, color? }`：扩散波纹，用于告警、强调 |
-| `cluster` | 平面 | `{ points: [{ id, position, name?, weight? }], cellSize?, color?, showNames? }`：点位聚合，下钻后自然展开 |
+| `cluster` | 平面 / 地球 | `{ points: [{ id, position, name?, weight? }], cellSize?, color?, showNames? }`：点位聚合，下钻后自然展开 |
 | `basemap` | 平面 | 瓦片底图，见下一节 |
 
-**没有 `choropleth` 时的板块样式**：能下钻的板块更高、颜色更亮，提示用户可以点进去；不能下钻的板块较低、颜色较暗。
+**没有 `choropleth` 时的板块样式**：能下钻的板块更高、颜色更亮，提示用户可以点进去；混合层级中不能下钻的板块较低、颜色较暗；若整层均无下级（如区县叶子层），板块会统一采用清晰的主体样式而非整层变暗。
 
-**数据类型**：类型定义随包导出，分别是 `ChoroplethLayerData`、`LabelLayerData`、`PointLayerData`、`LineLayerData`、`FlowLayerData`、`BarLayerData`、`HeatLayerData`、`RippleLayerData`、`ClusterLayerData`、`BasemapLayerData`。
+**数据类型**：类型定义同时从 `@geodive/core` 与 `@geodive/three` 导出，分别是 `ChoroplethLayerData`、`LabelLayerData`、`PointDatum`、`PointLayerData`、`LineLayerData`、`FlowDatum`、`FlowLayerData`、`BarDatum`、`BarLayerData`、`HeatDatum`、`HeatLayerData`、`RippleDatum`、`RippleLayerData`、`ClusterDatum`、`ClusterLayerData`、`BasemapStyle`、`BasemapLayerData`、`MarkerShape`、`MarkerDatum`、`MarkerLayerData`。
 
 ## 瓦片底图 basemap
 
@@ -135,7 +148,8 @@ engine.setLayers([
     zoomOffset: 0,      // 正数更清晰、瓦片更多
     maxTiles: 80,       // 每个图层、每一级的瓦片上限,超过时自动降一级
     id: "basemap",
-    visible: { scenes: ["plane"] },
+    visible: { minDepth: 3 },   // 只需在这里声明第几层进入详图;plateStyle 默认 "auto" 会自动切为镂空轮廓
+    plateStyle: "outline",       // 也可显式指定该底图激活时偏好的板块模式
   }),
   ...
 ]);
@@ -161,7 +175,9 @@ theme: {
   side: "#030b16",          // 侧壁底部
   base: "#0b1e33",          // 父级底板
   edge: "...",              // 板块边线(缺省由主色提亮)
-  highlight: "#fde68a",     // 悬停 / 聚焦高亮
+  highlight: "#fde68a",     // 悬停 / 聚焦高亮(未单独设 highlightEdge 时作描边与侧壁色)
+  highlightFill: "brighten",// 顶面高亮规则:"brighten"(同色系提亮,默认)、"none" 或 CSS 颜色(40% 混合)
+  highlightEdge: "...",     // 可选,单独指定高亮描边 / 侧壁颜色(缺省取 highlight)
   point: "#fde68a",
   label: "#eef6ff", labelValue: "...", labelShadow: "rgba(0,6,16,.95)",
   fontFamily: '"PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
@@ -202,6 +218,8 @@ const myLayer = defineOverlay<{ items: Array<{ position: [number, number] }> }>(
       tick(t, dt) {},                      // 每帧调用
       setOpacity(k) {},                    // 转场淡入淡出、视距淡出;scaleOpacity(group, k) 可以直接用
       update(next) { return false; },      // 同一图层的数据更新;返回 false 时由场景销毁后重建
+      pick(raycaster) { return null; },    // 可选:返回 { item, position?, distance } 后接入场景统一拾取
+      onHover(hit) {},                     // 可选:悬停命中或离开时回调
       dispose() { disposeTree(group); },
     };
   },

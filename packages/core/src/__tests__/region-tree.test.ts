@@ -71,4 +71,12 @@ describe("RegionTree", () => {
     expect(tree.has("A1")).toBe(false);
     expect(ids(tree.children("CN"))).toEqual(["B"]);
   });
+
+  it("visibleAt 返回当前视角可见区域", () => {
+    const tree = new RegionTree(nested);
+    expect(ids(tree.visibleAt(null))).toEqual(["AS"]);
+    expect(ids(tree.visibleAt("CN"))).toEqual(["A", "B"]);
+    expect(ids(tree.visibleAt("A1"))).toEqual(["A1"]);
+    expect(tree.visibleAt("MISSING")).toEqual([]);
+  });
 });

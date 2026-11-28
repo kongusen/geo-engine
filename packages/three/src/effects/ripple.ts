@@ -1,24 +1,8 @@
 import * as THREE from "three";
-import type { Position } from "@geodive/core";
+import type { RippleDatum, RippleLayerData } from "@geodive/core";
 import { alignToUp, defineOverlay, disposeTree } from "../overlay";
 
-export interface RippleDatum {
-  position: Position;
-  color?: string;
-  /** 尺寸系数,默认 1。 */
-  size?: number;
-  label?: string;
-}
-
-/** type: "ripple" —— 扩散波纹(告警、重点区域强调)。 */
-export interface RippleLayerData {
-  points: RippleDatum[];
-  /** 同时存在的波纹圈数,默认 3。 */
-  rings?: number;
-  /** 每秒扩散周期数,默认 0.5。 */
-  speed?: number;
-  color?: string;
-}
+export type { RippleDatum, RippleLayerData };
 
 export const rippleLayer = defineOverlay<RippleLayerData>({
   type: "ripple",

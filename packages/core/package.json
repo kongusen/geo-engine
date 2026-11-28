@@ -1,6 +1,6 @@
 {
   "name": "@geodive/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "geodive engine: region tree, drill-down state machine, deep-link path resolution, layers and data binding. Renderer-agnostic.",
   "keywords": [

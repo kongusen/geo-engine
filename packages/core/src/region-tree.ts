@@ -51,6 +51,15 @@ export class RegionTree {
     return (this.childIds.get(id) ?? []).map((cid) => this.regions.get(cid)!);
   }
 
+  /** 当前聚焦视角下应展示的区域（顶层返回根节点，非叶子返回子级，叶子返回自身）。 */
+  visibleAt(focusId: string | null): Region[] {
+    if (focusId === null) return this.roots();
+    const children = this.children(focusId);
+    if (children.length) return children;
+    const focus = this.regions.get(focusId);
+    return focus ? [focus] : [];
+  }
+
   parent(id: string): Region | undefined {
     const parentId = this.regions.get(id)?.parentId;
     return parentId ? this.regions.get(parentId) : undefined;

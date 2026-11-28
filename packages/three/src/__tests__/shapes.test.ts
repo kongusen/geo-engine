@@ -54,4 +54,19 @@ describe("Animator", () => {
     expect(other).toEqual([1]);
     expect(a.busy).toBe(false);
   });
+
+  it("被覆盖、显式 cancel 与 clear 时触发 cancel 回调", () => {
+    const a = new Animator(() => 0);
+    const cancelled: string[] = [];
+    a.add({ duration: 100, update: () => {}, cancel: () => cancelled.push("k1-a") }, "k1");
+    a.add({ duration: 100, update: () => {}, cancel: () => cancelled.push("k1-b") }, "k1");
+    expect(cancelled).toEqual(["k1-a"]);
+
+    a.cancel("k1");
+    expect(cancelled).toEqual(["k1-a", "k1-b"]);
+
+    a.add({ duration: 100, update: () => {}, cancel: () => cancelled.push("k2") }, "k2");
+    a.clear();
+    expect(cancelled).toEqual(["k1-a", "k1-b", "k2"]);
+  });
 });

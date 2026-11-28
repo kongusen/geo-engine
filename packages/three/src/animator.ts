@@ -6,6 +6,7 @@ export interface Tween {
   ease?: (t: number) => number;
   update(t: number): void;
   done?(): void;
+  cancel?(): void;
 }
 
 interface Running extends Tween {
@@ -24,14 +25,21 @@ export class Animator {
     return this.running.size > 0;
   }
 
+  has(key: string): boolean {
+    return this.keyed.has(key);
+  }
+
   add(tween: Tween, key?: string): () => void {
     if (key) this.cancel(key);
     const item: Running = { ...tween, start: this.now() + (tween.delay ?? 0), cancelled: false };
     this.running.add(item);
     if (key) this.keyed.set(key, item);
     return () => {
+      if (item.cancelled) return;
       item.cancelled = true;
       this.running.delete(item);
+      for (const [k, v] of this.keyed) if (v === item) this.keyed.delete(k);
+      item.cancel?.();
     };
   }
 
@@ -41,6 +49,7 @@ export class Animator {
       prev.cancelled = true;
       this.running.delete(prev);
       this.keyed.delete(key);
+      prev.cancel?.();
     }
   }
 
@@ -59,8 +68,15 @@ export class Animator {
   }
 
   clear(): void {
+    const items = [...this.running];
     this.running.clear();
     this.keyed.clear();
+    for (const item of items) {
+      if (!item.cancelled) {
+        item.cancelled = true;
+        item.cancel?.();
+      }
+    }
   }
 }
 

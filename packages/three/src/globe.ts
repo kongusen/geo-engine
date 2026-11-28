@@ -4,7 +4,7 @@ import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { lngLatToSphere, outerOutline, tangentFrame, type MultiPolygonCoords, type Position, type Region } from "@geodive/core";
-import type { SceneTheme } from "./theme";
+import { resolveHighlightFill, type SceneTheme } from "./theme";
 
 export interface GlobeOptions {
   /** 陆地环(经纬度),只作装饰底图,不可交互。 */
@@ -23,6 +23,7 @@ export interface GlobePoint {
   position: Position;
   label?: string;
   color?: string;
+  size?: number;
 }
 
 /** 三角面细分:最长边超过 maxEdgeDeg 时一分为四,使大面贴合球面而不穿入球体。 */
@@ -148,7 +149,7 @@ export class GlobeLayer {
   private readonly lineMaterials: LineMaterial[] = [];
   private patches = new Map<string, RegionPatch>();
   private hovered: string | null = null;
-  private highlighted: string | null = null;
+  private highlighted = new Set<string>();
   private opacity = 1;
   private sink = 0;
   private anchor: Position = [0, 0];
@@ -290,13 +291,14 @@ export class GlobeLayer {
     this.repaint();
   }
 
-  setPoints(points: GlobePoint[]): void {
+  setPoints(points: GlobePoint[], options?: { size?: number; minSize?: number }): void {
     for (const child of [...this.pointGroup.children]) {
       child.removeFromParent();
       disposeTree(child);
     }
-    const size = this.radius * 0.012;
+    const baseSize = Math.max(this.radius * 0.012, options?.minSize ?? 0) * (options?.size ?? 1);
     for (const point of points) {
+      const size = baseSize * (point.size ?? 1);
       const normal = new THREE.Vector3(...lngLatToSphere(point.position, 1));
       const g = new THREE.Group();
       g.position.copy(normal.clone().multiplyScalar(this.radius * 1.004));
@@ -340,9 +342,10 @@ export class GlobeLayer {
     this.repaint();
   }
 
-  setHighlight(id: string | null): void {
-    if (id === this.highlighted) return;
-    this.highlighted = id;
+  setHighlight(id: string | string[] | null): void {
+    const next = new Set(id === null ? [] : Array.isArray(id) ? id : [id]);
+    if (next.size === this.highlighted.size && [...next].every((x) => this.highlighted.has(x))) return;
+    this.highlighted = next;
     this.repaint();
   }
 
@@ -470,13 +473,16 @@ export class GlobeLayer {
   }
 
   private repaint(): void {
+    const edgeColor = this.theme.highlightEdge ?? this.theme.highlight;
+    const fillAccent = new THREE.Color(this.theme.accent);
+    const fillHighlight = resolveHighlightFill(fillAccent, this.theme);
     for (const patch of this.patches.values()) {
-      const hovered = patch.region.id === this.hovered || patch.region.id === this.highlighted;
+      const hovered = patch.region.id === this.hovered || this.highlighted.has(patch.region.id);
       const base = patch.drillable ? 0.55 : 0.28;
-      patch.mesh.material.opacity = (hovered ? 0.8 : base) * patch.fade * this.opacity;
-      patch.mesh.material.color.set(hovered ? this.theme.highlight : this.theme.accent);
+      patch.mesh.material.opacity = (hovered ? 0.85 : base) * patch.fade * this.opacity;
+      patch.mesh.material.color.copy(hovered ? fillHighlight : fillAccent);
       patch.outline.material.opacity = patch.fade * this.opacity;
-      patch.outline.material.color.set(hovered ? this.theme.highlight : this.theme.edge);
+      patch.outline.material.color.set(hovered ? edgeColor : this.theme.edge);
       if (patch.label) (patch.label.element as HTMLElement).style.opacity = String(patch.fade * this.opacity);
     }
   }

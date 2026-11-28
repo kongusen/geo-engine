@@ -46,6 +46,25 @@ describe("binding", () => {
     expect(classify([]).breaks).toEqual([]);
   });
 
+  it("显式 domain 支持稀疏与全部相等数据不塌缩", () => {
+    const lin = classify([1, 1, 1], "linear", 5, { domain: [0, 10] });
+    expect(lin.breaks).toEqual([0, 10]);
+    expect(lin.position(1)).toBeCloseTo(0.1);
+    expect(lin.position(5)).toBeCloseTo(0.5);
+
+    const eq = classify([2], "equal", 4, { domain: [0, 100] });
+    expect(eq.breaks).toEqual([0, 25, 50, 75, 100]);
+    expect(eq.classOf(30)).toBe(1);
+
+    const q = classify([1, 1, 1], "quantile", 5, { domain: [0, 10] });
+    expect(q.breaks).toEqual([0, 10]);
+    expect(q.position(1)).toBeCloseTo(0.1);
+
+    const empty = classify([], "jenks", 5, { domain: [0, 10] });
+    expect(empty.breaks).toEqual([0, 10]);
+    expect(empty.position(5)).toBeCloseTo(0.5);
+  });
+
   it("颜色插值与图例", () => {
     expect(interpolateColors(["#000000", "#ffffff"], 0.5)).toBe("#808080");
     expect(interpolateColors(["#000", "#f00", "#fff"], 1)).toBe("#ffffff");

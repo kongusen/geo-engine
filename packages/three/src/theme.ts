@@ -16,8 +16,12 @@ export interface SceneTheme {
   base: string;
   /** 板块边线(默认:主色提亮)。 */
   edge: string;
-  /** 悬停 / 聚焦高亮。 */
+  /** 悬停 / 聚焦高亮(未单独指定 highlightEdge / highlightFill 时同时作为描边与混合色)。 */
   highlight: string;
+  /** 悬停 / 聚焦时顶面填充规则:"brighten"(同色系提亮,默认)、"none"(不变)或 CSS 颜色(40% 混合)。 */
+  highlightFill?: string | "brighten" | "none";
+  /** 悬停 / 聚焦时描边与侧壁顶部颜色(缺省取 highlight)。 */
+  highlightEdge?: string;
   /** 点位颜色。 */
   point: string;
   label: string;
@@ -36,6 +40,7 @@ export const DEFAULT_THEME: SceneTheme = {
   base: "#0b1e33",
   edge: "#a5f3fc",
   highlight: "#fde68a",
+  highlightFill: "brighten",
   point: "#fde68a",
   label: "#eef6ff",
   labelValue: "#a5f3fc",
@@ -46,6 +51,14 @@ export const DEFAULT_THEME: SceneTheme = {
 /** 两个 CSS 颜色按 t 混合,返回 hex。 */
 export function mixColor(a: string, b: string, t: number): string {
   return `#${new Color(a).lerp(new Color(b), t).getHexString()}`;
+}
+
+/** 计算板块 / 球面块高亮时的顶面填充色,避免冷青底色与暖黄 highlight 混合发灰。 */
+export function resolveHighlightFill(base: Color, theme: SceneTheme): Color {
+  const fill = theme.highlightFill ?? "brighten";
+  if (fill === "none") return base.clone();
+  if (fill === "brighten") return base.clone().offsetHSL(0, 0.05, 0.14);
+  return base.clone().lerp(new Color(fill), 0.4);
 }
 
 /** 由主色派生主题:未显式给出的边线 / 数值颜色由主色提亮得到。 */

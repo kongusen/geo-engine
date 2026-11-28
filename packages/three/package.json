@@ -1,6 +1,6 @@
 {
   "name": "@geodive/three",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "geodive three.js renderer: globe ↔ extruded plate transitions, labels, points, overlays and tile basemap.",
   "keywords": [

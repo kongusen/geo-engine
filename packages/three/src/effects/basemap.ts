@@ -5,6 +5,8 @@ import {
   tileToLngLat,
   tileUrl,
   zoomForResolution,
+  type BasemapLayerData,
+  type BasemapStyle,
   type BBox,
   type LayerSpec,
   type LayerVisibility,
@@ -15,39 +17,7 @@ import {
 } from "@geodive/core";
 import { defineOverlay, type OverlayContext } from "../overlay";
 
-/** 底图着色:把彩色瓦片调成与大屏主题协调的色调。所有分量 0~1。 */
-export interface BasemapStyle {
-  /** 整体不透明度,缺省 1。 */
-  opacity?: number;
-  /** 反相(浅色矢量底图配深色主题时用),缺省 0。 */
-  invert?: number;
-  /** 去色,缺省 0。 */
-  grayscale?: number;
-  /** 着色:颜色字符串,或 "accent" 跟随主题主色;null 不着色(缺省)。 */
-  tint?: string | null;
-  /** 着色强度,缺省 0.6。 */
-  tintAmount?: number;
-  /** 亮度系数,缺省 1。 */
-  brightness?: number;
-  /**
-   * 输出亮度上限,缺省 0.6。场景泛光的阈值为 0.7,底图作为背景不应参与泛光,
-   * 否则浅色底图会整片过曝;关闭泛光(bloom: false)的场景可设为 1。
-   */
-  maxLuminance?: number;
-}
-
-/** type: "basemap" —— 栅格瓦片底图(仅平面场景)。 */
-export interface BasemapLayerData {
-  /** 瓦片图层栈,自下而上(如天地图底图 + 注记)。 */
-  sources: TileSource[];
-  style?: BasemapStyle;
-  /** 铺设范围:当前层级范围的倍数,缺省 3(大于视野时按视野裁剪)。 */
-  extent?: number;
-  /** 级别偏移:正数更清晰(瓦片更多),缺省 0。 */
-  zoomOffset?: number;
-  /** 每个图层每级最多瓦片数,超过时自动降级,缺省 80。 */
-  maxTiles?: number;
-}
+export type { BasemapLayerData, BasemapStyle };
 
 /** 便捷构造底图图层规格:自动带上各图层的版权信息,缺省只在平面场景显示。 */
 export function basemap(
@@ -234,8 +204,8 @@ export const basemapLayer = defineOverlay<BasemapLayerData>({
     let uniforms = styleUniforms(data.style, ctx);
     let opacity = 1;
     const tiles = new Map<string, TileMesh>();
-    // 在装饰网格(-0.3 单位高)之下,让网格与光环叠在地图上
-    const z = -0.32 * ctx.unitHeight;
+    // 在装饰网格之下;板块设为扁平轮廓时紧贴地表以减少视差错位
+    const z = ctx.baseHeight > 0 ? -0.32 * ctx.unitHeight : -0.02 * ctx.unitHeight;
     let lastKey = "";
     let lastRefresh = 0;
 

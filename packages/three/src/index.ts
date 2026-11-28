@@ -10,5 +10,6 @@ export * from "./effects/bar";
 export * from "./effects/heat";
 export * from "./effects/ripple";
 export * from "./effects/cluster";
+export * from "./effects/marker";
 export * from "./scene-host";
 export * from "./effects/basemap";

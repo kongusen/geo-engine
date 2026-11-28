@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { GeoEngine, type EngineFrame, type GeoSource } from "../engine";
+import {
+  GeoEngine,
+  createLayer,
+  type ChoroplethLayerData,
+  type EngineFrame,
+  type GeoSource,
+  type PointDatum,
+  type RippleLayerData,
+} from "../index";
 import type { RegionInput } from "@geodive/data";
 import { box, feature, rect } from "./fixtures";
 
@@ -199,6 +207,67 @@ describe("GeoEngine", () => {
     expect(f.focus?.id).toBe("ZJ");
     expect(f.regions.map((r) => r.id)).toEqual(["XH"]);
     expect(f.view.scene).toBe("plane");
+  });
+
+  it("visibleRegions 随聚焦和 leafLevels 返回当前可见区域", async () => {
+    const engine = new GeoEngine({ sources: [lazySource()] });
+    await engine.start();
+    expect(engine.visibleRegions().map((r) => r.id)).toEqual(["CN", "FR"]);
+    await engine.activate("CN");
+    expect(engine.visibleRegions().map((r) => r.id)).toEqual(["ZJ"]);
+    await engine.activate("ZJ");
+    expect(engine.visibleRegions().map((r) => r.id).sort()).toEqual(["330106", "330200"]);
+    engine.setLeafLevels(["province"]);
+    expect(engine.visibleRegions().map((r) => r.id)).toEqual(["ZJ"]);
+  });
+
+  it("drill 回调内同步调用 setLayers 会合并为单帧并保留真实 direction", async () => {
+    const engine = new GeoEngine({ sources: [lazySource()] });
+    await engine.start();
+    const pt: PointDatum = { id: "p1", name: "点1", position: [108.5, 25.5], size: 1.5 };
+    const ch: ChoroplethLayerData = { values: { ZJ: 4 }, domain: [0, 10] };
+    const rp: RippleLayerData = { points: [{ position: [108.5, 25.5] }] };
+    expect(rp.points).toHaveLength(1);
+
+    const emitted: EngineFrame[] = [];
+    engine.on("frame", (f) => emitted.push(f));
+    engine.on("drill", () => {
+      engine.setLayers([
+        { id: "ch", type: "choropleth", data: ch },
+        { id: "pt", type: "point", data: { points: [pt] } },
+      ]);
+    });
+
+    await engine.activate("CN");
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].direction).toBe("down");
+    expect(emitted[0].layers.map((l) => l.id)).toEqual(["ch", "pt"]);
+  });
+
+  it("createLayer 类型推导与增量图层管理(setLayers 函数式 / upsertLayer / patchLayer / removeLayer)", async () => {
+    const chLayer = createLayer("choropleth", { id: "ch", data: { values: { ZJ: 10 }, domain: [0, 20] } });
+    const mkLayer = createLayer("marker", { id: "mk", data: { markers: [{ id: "m1", position: [108, 25], shape: "pin" }] } });
+    const engine = new GeoEngine({ sources: [lazySource()], layers: [chLayer] });
+    await engine.start();
+
+    expect(engine.getLayers().map((l) => l.id)).toEqual(["ch"]);
+    expect(engine.getLayer("ch")?.type).toBe("choropleth");
+
+    engine.upsertLayer(mkLayer);
+    expect(engine.getLayers().map((l) => l.id)).toEqual(["ch", "mk"]);
+
+    // 局部 patch 不丢失已有属性
+    expect(engine.patchLayer("mk", { visible: { minDepth: 2 } })).toBe(true);
+    expect(engine.getLayer("mk")?.visible).toEqual({ minDepth: 2 });
+    expect((engine.getLayer("mk")?.data as { markers: unknown[] }).markers).toHaveLength(1);
+    expect(engine.patchLayer("missing", { zIndex: 1 })).toBe(false);
+
+    // 函数式更新与移除
+    engine.setLayers((prev) => prev.map((l) => (l.id === "ch" ? { ...l, zIndex: 2 } : l)));
+    expect(engine.getLayer("ch")?.zIndex).toBe(2);
+    expect(engine.removeLayer("mk")).toBe(true);
+    expect(engine.removeLayer("mk")).toBe(false);
+    expect(engine.getLayers().map((l) => l.id)).toEqual(["ch"]);
   });
 });
 

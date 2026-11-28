@@ -1,4 +1,19 @@
-import { GeoScene, type GeoSceneOptions, type SceneStats, type ViewportInset } from "./geo-scene";
+import { Emitter, type Position, type Unsubscribe } from "@geodive/core";
+import {
+  GeoScene,
+  type AnchorOptions,
+  type FitBoundsOptions,
+  type FlyToOptions,
+  type GeoSceneOptions,
+  type PlateStyleSpec,
+  type SceneAnchor,
+  type SceneCameraInfo,
+  type SceneEventMap,
+  type ScenePickEvent,
+  type SceneStats,
+  type ScreenPoint,
+  type ViewportInset,
+} from "./geo-scene";
 import type { OverlayPlugin } from "./overlay";
 
 export type SceneHostStatus = "ready" | "recovering" | "failed";
@@ -8,7 +23,19 @@ export interface HostedScene {
   setAccent(accent: string): void;
   setLabelsVisible(visible: boolean): void;
   setViewportInset?(inset: ViewportInset, animate?: boolean): void;
-  setHighlight?(id: string | null): void;
+  setPlateStyle?(style: PlateStyleSpec | undefined): void;
+  setHighlight?(id: string | string[] | null): void;
+  flyTo?(options: FlyToOptions): Promise<void>;
+  resetView?(animate?: boolean): Promise<void>;
+  fitBounds?(positions: Position[], options?: FitBoundsOptions): Promise<void>;
+  setPitch?(pitchDeg: number, animate?: boolean): Promise<void>;
+  zoomBy?(factor: number, animate?: boolean): Promise<void>;
+  getCameraState?(): SceneCameraInfo | null;
+  project?(position: Position, heightOffset?: number): ScreenPoint | null;
+  unproject?(screenX: number, screenY: number): Position | null;
+  createAnchor?(position: Position, element: HTMLElement, options?: AnchorOptions): SceneAnchor;
+  on?<K extends keyof SceneEventMap>(event: K, handler: (payload: SceneEventMap[K]) => void): Unsubscribe;
+  whenIdle?(): Promise<void>;
   registerOverlay(plugin: OverlayPlugin): void;
   stats(): SceneStats;
   dispose(): void;
@@ -41,8 +68,22 @@ export class SceneHost {
   private accent: string | undefined;
   private labelsVisible: boolean | undefined;
   private viewportInset: ViewportInset | undefined;
-  private highlighted: string | null | undefined;
+  private plateStyle: PlateStyleSpec | undefined;
+  private hasCustomPlateStyle = false;
+  private pitchDeg: number | undefined;
+  private highlighted: string | string[] | null | undefined;
   private readonly overlays: OverlayPlugin[] = [];
+  private readonly anchors = new Set<{
+    position: Position;
+    element: HTMLElement;
+    options?: AnchorOptions;
+    offset?: [number, number];
+    visible?: boolean;
+    inner: SceneAnchor | null;
+  }>();
+  private readonly events = new Emitter<SceneEventMap>();
+  private unsubScene: Unsubscribe[] = [];
+  private building = false;
   /** 重建次数(含首次创建),用于巡检。 */
   builds = 0;
 
@@ -52,6 +93,7 @@ export class SceneHost {
   ) {
     this.accent = sceneOptions.theme?.accent;
     this.viewportInset = sceneOptions.viewportInset ? { ...sceneOptions.viewportInset } : undefined;
+    this.plateStyle = sceneOptions.plateStyle;
     this.build();
   }
 
@@ -78,9 +120,118 @@ export class SceneHost {
     this.current?.setViewportInset?.(inset, animate);
   }
 
-  setHighlight(id: string | null): void {
-    this.highlighted = id;
+  setPlateStyle(style: PlateStyleSpec | undefined): void {
+    this.plateStyle = style;
+    this.hasCustomPlateStyle = true;
+    this.current?.setPlateStyle?.(style);
+  }
+
+  setHighlight(id: string | string[] | null): void {
+    this.highlighted = Array.isArray(id) ? [...id] : id;
     this.current?.setHighlight?.(id);
+  }
+
+  flyTo(options: FlyToOptions): Promise<void> {
+    return this.current?.flyTo?.(options) ?? Promise.resolve();
+  }
+
+  resetView(animate = true): Promise<void> {
+    this.pitchDeg = undefined;
+    return this.current?.resetView?.(animate) ?? Promise.resolve();
+  }
+
+  fitBounds(positions: Position[], options?: FitBoundsOptions): Promise<void> {
+    return this.current?.fitBounds?.(positions, options) ?? Promise.resolve();
+  }
+
+  setPitch(pitchDeg: number, animate = true): Promise<void> {
+    this.pitchDeg = pitchDeg;
+    return this.current?.setPitch?.(pitchDeg, animate) ?? Promise.resolve();
+  }
+
+  zoomBy(factor: number, animate = true): Promise<void> {
+    return this.current?.zoomBy?.(factor, animate) ?? Promise.resolve();
+  }
+
+  getCameraState(): SceneCameraInfo | null {
+    return this.current?.getCameraState?.() ?? null;
+  }
+
+  project(position: Position, heightOffset = 0): ScreenPoint | null {
+    return this.current?.project?.(position, heightOffset) ?? null;
+  }
+
+  unproject(screenX: number, screenY: number): Position | null {
+    return this.current?.unproject?.(screenX, screenY) ?? null;
+  }
+
+  createAnchor(position: Position, element: HTMLElement, options?: AnchorOptions): SceneAnchor {
+    const record: {
+      position: Position;
+      element: HTMLElement;
+      options?: AnchorOptions;
+      offset?: [number, number];
+      visible?: boolean;
+      inner: SceneAnchor | null;
+    } = {
+      position: [...position],
+      element,
+      options,
+      offset: options?.offset ? [...options.offset] : undefined,
+      visible: options?.visible,
+      inner: this.current?.createAnchor?.(position, element, options) ?? null,
+    };
+    this.anchors.add(record);
+    return {
+      setPosition: (next) => {
+        record.position = [...next];
+        record.inner?.setPosition(next);
+      },
+      setOffset: (next) => {
+        record.offset = [...next];
+        record.inner?.setOffset(next);
+      },
+      setVisible: (next) => {
+        record.visible = next;
+        record.inner?.setVisible(next);
+      },
+      dispose: () => {
+        this.anchors.delete(record);
+        record.inner?.dispose();
+        record.inner = null;
+      },
+    };
+  }
+
+  on<K extends keyof SceneEventMap>(event: K, handler: (payload: SceneEventMap[K]) => void): Unsubscribe {
+    return this.events.on(event, handler);
+  }
+
+  /** 按图层 id 订阅点击或悬停事件(悬停离开该图层时派发 null)。 */
+  onLayer<T = unknown>(layerId: string, event: "click", handler: (event: ScenePickEvent<T>) => void): Unsubscribe;
+  onLayer<T = unknown>(layerId: string, event: "hover", handler: (event: ScenePickEvent<T> | null) => void): Unsubscribe;
+  onLayer<T = unknown>(layerId: string, event: "click" | "hover", handler: ((event: ScenePickEvent<T>) => void) | ((event: ScenePickEvent<T> | null) => void)): Unsubscribe {
+    if (event === "click") {
+      const fn = handler as (event: ScenePickEvent<T>) => void;
+      return this.events.on("click", (ev) => {
+        if (ev.layerId === layerId) fn(ev as ScenePickEvent<T>);
+      });
+    }
+    const fn = handler as (event: ScenePickEvent<T> | null) => void;
+    let active = false;
+    return this.events.on("hover", (ev) => {
+      if (ev?.layerId === layerId) {
+        active = true;
+        fn(ev as ScenePickEvent<T>);
+      } else if (active) {
+        active = false;
+        fn(null);
+      }
+    });
+  }
+
+  whenIdle(): Promise<void> {
+    return this.current?.whenIdle ? this.current.whenIdle() : Promise.resolve();
   }
 
   registerOverlay(plugin: OverlayPlugin): void {
@@ -102,17 +253,23 @@ export class SceneHost {
   dispose(): void {
     this.disposed = true;
     this.clearTimer();
+    this.events.clear();
+    for (const a of [...this.anchors]) a.inner?.dispose();
+    this.anchors.clear();
     this.teardown();
   }
 
   private build(): void {
     this.teardown();
+    this.building = true;
     try {
       const create = this.options.createScene ?? ((o: GeoSceneOptions) => new GeoScene(o));
       const scene = create({
         ...this.sceneOptions,
         theme: { ...this.sceneOptions.theme, ...(this.accent ? { accent: this.accent } : {}) },
         ...(this.viewportInset ? { viewportInset: this.viewportInset } : {}),
+        ...(this.hasCustomPlateStyle ? { plateStyle: this.plateStyle } : {}),
+        ...(this.pitchDeg !== undefined ? { pitchDeg: this.pitchDeg } : {}),
         onContextLost: () => {
           this.sceneOptions.onContextLost?.();
           if (this.current === scene) this.onLost();
@@ -124,14 +281,32 @@ export class SceneHost {
       });
       this.builds++;
       this.current = scene;
+      const events: Array<keyof SceneEventMap> = ["click", "hover", "mapclick", "camerachange", "transitionstart", "transitionend"];
+      for (const ev of events) {
+        const off = scene.on?.(ev, (payload) => {
+          if (this.disposed || (this.current !== scene && !this.building)) return;
+          this.events.emit(ev, payload as never);
+        });
+        if (off) this.unsubScene.push(off);
+      }
       for (const plugin of this.overlays) scene.registerOverlay(plugin);
       if (this.labelsVisible !== undefined) scene.setLabelsVisible(this.labelsVisible);
       if (this.highlighted !== undefined) scene.setHighlight?.(this.highlighted);
+      for (const a of this.anchors) {
+        a.inner =
+          scene.createAnchor?.(a.position, a.element, {
+            ...a.options,
+            ...(a.offset ? { offset: a.offset } : {}),
+            ...(a.visible !== undefined ? { visible: a.visible } : {}),
+          }) ?? null;
+      }
       this.attempt = 0;
       this.setStatus("ready");
     } catch (error) {
       console.error("[scene-host] 场景创建失败", error);
       this.scheduleRetry(error);
+    } finally {
+      this.building = false;
     }
   }
 
@@ -163,6 +338,8 @@ export class SceneHost {
   }
 
   private teardown(): void {
+    for (const off of this.unsubScene) off();
+    this.unsubScene = [];
     const scene = this.current;
     this.current = null;
     try {

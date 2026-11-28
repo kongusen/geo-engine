@@ -45,6 +45,12 @@ export interface OverlayContext {
   label(text: string, style?: Partial<CSSStyleDeclaration>): CSS2DObject;
 }
 
+export interface OverlayPickHit<T = unknown> {
+  item: T;
+  position?: Position;
+  distance: number;
+}
+
 export interface OverlayInstance {
   /** 同一图层数据更新;返回 false(或未实现)时场景会销毁后重建。 */
   update?(spec: LayerSpec): boolean;
@@ -52,6 +58,10 @@ export interface OverlayInstance {
   tick?(t: number, dt: number): void;
   /** 整体透明度(转场淡入淡出)。 */
   setOpacity?(k: number): void;
+  /** 可选拾取钩子:供场景统一处理悬停与点击事件。 */
+  pick?(raycaster: THREE.Raycaster): OverlayPickHit | null;
+  /** 场景悬停命中或离开当前插件元素时的回调。 */
+  onHover?(hit: OverlayPickHit | null): void;
   dispose(): void;
 }
 

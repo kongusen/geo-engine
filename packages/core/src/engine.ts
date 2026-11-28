@@ -10,6 +10,7 @@ import {
 import { DrillController, PathUnresolvedError, type DrillChange, type DrillGuard, type DrillState } from "./drill";
 import { Emitter, type Unsubscribe } from "./events";
 import { activeLayers, diffLayers, type LayerDiff, type LayerSpec } from "./layers";
+import type { AnyLayerSpec } from "./layer-data";
 import { viewFor, viewForRegion, type SceneThresholds, type ViewTarget } from "./projection";
 import { RegionTree, type AddRegionsOptions } from "./region-tree";
 import type { GeoIssue, Position, Region, RegionInput } from "@geodive/data";
@@ -92,7 +93,7 @@ export interface GeoEngineOptions {
   /** 叶子区域也可以聚焦(见 DrillOptions.allowLeafFocus)。 */
   allowLeafFocus?: boolean;
   sources?: EngineSource[];
-  layers?: LayerSpec[];
+  layers?: AnyLayerSpec[];
   plugins?: GeoPlugin[];
   thresholds?: SceneThresholds;
   treeOptions?: AddRegionsOptions;
@@ -128,6 +129,7 @@ export class GeoEngine {
   private abort = new AbortController();
   private selected: string | null = null;
   private leafLevels: Set<string>;
+  private emittingDrill = false;
 
   constructor(private options: GeoEngineOptions = {}) {
     this.leafLevels = new Set(options.leafLevels ?? []);
@@ -144,7 +146,12 @@ export class GeoEngine {
     });
     this.drill.events.on("change", (change) => {
       this.selected = null;
-      this.events.emit("drill", change);
+      this.emittingDrill = true;
+      try {
+        this.events.emit("drill", change);
+      } finally {
+        this.emittingDrill = false;
+      }
       this.emitFrame(change.direction);
     });
     this.drill.events.on("loading", (e) => this.events.emit("loading", e));
@@ -218,9 +225,44 @@ export class GeoEngine {
     this.emitFrame("init");
   }
 
-  setLayers(layers: LayerSpec[]): void {
-    this.layers = [...layers];
+  setLayers(next: AnyLayerSpec[] | ((prev: LayerSpec[]) => AnyLayerSpec[])): void {
+    const resolved = typeof next === "function" ? next([...this.layers]) : next;
+    this.layers = [...resolved];
     this.emitFrame("init");
+  }
+
+  getLayers(): readonly LayerSpec[] {
+    return this.layers;
+  }
+
+  getLayer<T extends LayerSpec = LayerSpec>(id: string): T | undefined {
+    return this.layers.find((l) => l.id === id) as T | undefined;
+  }
+
+  /** 按 id 新增或替换单个图层。 */
+  upsertLayer(spec: AnyLayerSpec): void {
+    const idx = this.layers.findIndex((l) => l.id === spec.id);
+    if (idx >= 0) this.layers[idx] = spec;
+    else this.layers.push(spec);
+    this.emitFrame("init");
+  }
+
+  /** 局部更新已存在图层的 data / visible / style 等字段;找不到 id 时返回 false。 */
+  patchLayer<TData = unknown, TStyle = Record<string, unknown>>(id: string, patch: Partial<Omit<LayerSpec<TData, TStyle>, "id">>): boolean {
+    const idx = this.layers.findIndex((l) => l.id === id);
+    if (idx < 0) return false;
+    this.layers[idx] = { ...this.layers[idx], ...(patch as Partial<LayerSpec>), id };
+    this.emitFrame("init");
+    return true;
+  }
+
+  /** 移除指定 id 的图层;存在并移除时返回 true。 */
+  removeLayer(id: string): boolean {
+    const next = this.layers.filter((l) => l.id !== id);
+    if (next.length === this.layers.length) return false;
+    this.layers = next;
+    this.emitFrame("init");
+    return true;
   }
 
   attach(scene: SceneAdapter): Unsubscribe {
@@ -272,12 +314,18 @@ export class GeoEngine {
     return this.selected ? this.tree.get(this.selected) ?? null : null;
   }
 
+  /** 当前（或指定）聚焦节点在视图中应展示的区域列表（有下级返回子级，叶子返回自身）。 */
+  visibleRegions(focusId: string | null = this.drill.state.focusId): Region[] {
+    const focus = focusId ? this.tree.get(focusId) ?? null : null;
+    const children = focusId && this.isLeaf(focusId) ? [] : this.tree.children(focusId);
+    return children.length ? children : focus ? [focus] : [];
+  }
+
   /** 当前帧(供渲染器首屏或 React 同步读取)。 */
   frame(direction: EngineFrame["direction"] = "init"): EngineFrame {
     const drill = this.drill.state;
     const focus = drill.focusId ? this.tree.get(drill.focusId) ?? null : null;
-    const children = drill.focusId && this.isLeaf(drill.focusId) ? [] : this.tree.children(drill.focusId);
-    const regions = children.length ? children : focus ? [focus] : [];
+    const regions = this.visibleRegions(drill.focusId);
     const view = focus ? viewForRegion(focus, this.options.thresholds) : viewFor(null, this.options.thresholds);
     const layers = activeLayers(this.layers, { drill, scene: view.scene });
     let anchor: EngineFrame["anchor"] = null;
@@ -315,6 +363,7 @@ export class GeoEngine {
   }
 
   private emitFrame(direction: EngineFrame["direction"]): void {
+    if (this.emittingDrill) return;
     const frame = this.frame(direction);
     this.prevLayers = frame.layers;
     this.events.emit("frame", frame);

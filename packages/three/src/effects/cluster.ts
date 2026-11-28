@@ -1,33 +1,24 @@
 import * as THREE from "three";
-import { clusterPoints, type Position } from "@geodive/core";
-import { defineOverlay, disposeTree, scaleOpacity } from "../overlay";
+import { clusterPoints, type Cluster, type ClusterDatum, type ClusterLayerData, type Position } from "@geodive/core";
+import { alignToUp, defineOverlay, disposeTree, scaleOpacity } from "../overlay";
 
-export interface ClusterDatum {
-  id: string;
-  name?: string;
-  position: Position;
-  weight?: number;
-}
+export type { ClusterDatum, ClusterLayerData };
 
-/** type: "cluster" —— 点位聚合(企业 / 门店较密时),气泡大小与数量相关。仅平面模式。 */
-export interface ClusterLayerData {
-  points: ClusterDatum[];
-  /** 聚合格大小(相对特征长度),默认 0.12;下钻后特征长度变小,聚合自然展开。 */
-  cellSize?: number;
-  color?: string;
-  /** 单点(未聚合)时显示名称,默认 false。 */
-  showNames?: boolean;
-}
+const DEG = Math.PI / 180;
 
 export const clusterLayer = defineOverlay<ClusterLayerData>({
   type: "cluster",
-  modes: ["plane"],
+  modes: ["plane", "globe"],
   create(ctx, spec) {
     const data = spec.data ?? { points: [] };
     const group = new THREE.Group();
     ctx.group.add(group);
     const inside = data.points.filter((p) => ctx.contains(p.position));
-    const clusters = clusterPoints(inside, ctx.scale * (data.cellSize ?? 0.12), (p) => ctx.planeXY(p) ?? p);
+    const project =
+      ctx.mode === "plane"
+        ? (p: Position) => ctx.planeXY(p) ?? p
+        : (p: Position): [number, number] => [p[0] * DEG * ctx.scale, p[1] * DEG * ctx.scale];
+    const clusters = clusterPoints(inside, ctx.scale * (data.cellSize ?? 0.12), project);
     const maxCount = Math.max(1, ...clusters.map((c) => c.count));
     const color = new THREE.Color(data.color ?? ctx.theme.point);
     const base = ctx.scale * 0.014;
@@ -39,8 +30,12 @@ export const clusterLayer = defineOverlay<ClusterLayerData>({
         new THREE.SphereGeometry(r, 24, 16),
         new THREE.MeshBasicMaterial({ color, transparent: true, opacity: single ? 0.95 : 0.55, depthWrite: false }),
       );
+      const up = ctx.up(cluster.position).clone().normalize();
       mesh.position.copy(ctx.position(cluster.position, r * 1.2));
-      mesh.userData.baseZ = mesh.position.z;
+      alignToUp(mesh, up);
+      mesh.userData.basePos = mesh.position.clone();
+      mesh.userData.up = up;
+      mesh.userData.cluster = cluster;
       mesh.renderOrder = 7;
       if (!single) {
         const halo = new THREE.Mesh(
@@ -59,11 +54,20 @@ export const clusterLayer = defineOverlay<ClusterLayerData>({
     }
     return {
       tick(t) {
-        // 轻微上下浮动
-        bubbles.forEach((b, i) => (b.position.z = b.userData.baseZ + Math.sin(t * 1.4 + i) * ctx.unitHeight * 0.08));
+        // 轻微沿法线浮动
+        bubbles.forEach((b, i) => {
+          const basePos = b.userData.basePos as THREE.Vector3;
+          const up = b.userData.up as THREE.Vector3;
+          b.position.copy(basePos).addScaledVector(up, Math.sin(t * 1.4 + i) * ctx.unitHeight * 0.08);
+        });
       },
       setOpacity(k) {
         scaleOpacity(group, k);
+      },
+      pick(raycaster) {
+        const hit = raycaster.intersectObjects(bubbles, false)[0];
+        const cluster = hit?.object.userData.cluster as Cluster<ClusterDatum> | undefined;
+        return cluster ? { item: cluster, position: cluster.position, distance: hit.distance } : null;
       },
       dispose() {
         disposeTree(group);

@@ -43,6 +43,11 @@ export function bindData<T>(tree: RegionTree, rows: T[], options: BindOptions<T>
 
 export type ClassifyMethod = "linear" | "equal" | "quantile" | "jenks";
 
+export interface ClassifyOptions {
+  /** 显式值域 [min, max],用于在稀疏或全部值相同时保持稳定色阶映射。 */
+  domain?: [number, number];
+}
+
 export interface Classification {
   method: ClassifyMethod;
   /** 分级断点(升序,长度 = classes + 1,首尾为最小/最大值)。linear 时只有 [min, max]。 */
@@ -111,13 +116,14 @@ function jenksBreaks(sorted: number[], k: number): number[] {
 }
 
 /** 对数值分级,用于填色、挤出高度、气泡大小和图例。 */
-export function classify(values: number[], method: ClassifyMethod = "linear", classes = 5): Classification {
+export function classify(values: number[], method: ClassifyMethod = "linear", classes = 5, options?: ClassifyOptions): Classification {
   const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
-  if (!sorted.length) {
+  const hasDomain = !!options?.domain && Number.isFinite(options.domain[0]) && Number.isFinite(options.domain[1]) && options.domain[1] > options.domain[0];
+  if (!sorted.length && !hasDomain) {
     return { method, breaks: [], position: () => 0, classOf: () => -1 };
   }
-  const min = sorted[0];
-  const max = sorted[sorted.length - 1];
+  const min = hasDomain ? options!.domain![0] : sorted[0];
+  const max = hasDomain ? options!.domain![1] : sorted[sorted.length - 1];
   if (method === "linear" || min === max) {
     return {
       method: "linear",
@@ -126,7 +132,15 @@ export function classify(values: number[], method: ClassifyMethod = "linear", cl
       classOf: () => -1,
     };
   }
-  const k = Math.max(1, Math.min(classes, new Set(sorted).size));
+  if ((method === "quantile" || method === "jenks") && (sorted.length === 0 || new Set(sorted).size < 2)) {
+    return {
+      method: "linear",
+      breaks: [min, max],
+      position: (v) => Math.min(1, Math.max(0, (v - min) / (max - min))),
+      classOf: () => -1,
+    };
+  }
+  const k = hasDomain && method === "equal" ? Math.max(1, classes) : Math.max(1, Math.min(classes, new Set(sorted).size));
   const breaks =
     method === "equal"
       ? Array.from({ length: k + 1 }, (_, i) => min + ((max - min) * i) / k)

@@ -3,7 +3,7 @@
  * 区域数据为 demo-data/ 下的快照(世界陆地、全国省级、浙江各市与杭州各区,取自公开行政区划数据),
  * 点位、数值等示例数据为随机生成,不代表任何真实业务。
  */
-import { autoTour, pointInMultiPolygon, type LayerSpec, type Position } from "@geodive/core";
+import { autoTour, pointInMultiPolygon, type LayerSpec, type PointDatum, type Position } from "@geodive/core";
 import { SceneHost } from "../src";
 import { CHINA_ID, DEMO_SEAT, HANGZHOU_ID, WORLD_LAND, XIHU_ID, ZHEJIANG_ID, chinaNineDashLines, createOverviewEngine } from "./demo-data/world-regions";
 
@@ -17,13 +17,13 @@ const scene = new SceneHost(
     theme: { accent: "#10b981", background: "#050b16" },
     globe: { land: WORLD_LAND, initialView: [96, 20] },
     attribution: "演示数据 · 非真实业务",
-    onPointClick: (point) => {
-      const status = document.getElementById("point-status");
-      if (status) status.textContent = `已点击点位: ${point.name} (${point.id})`;
-    },
   },
   { onStatus: (status) => (document.body.dataset.sceneStatus = status) },
 );
+scene.onLayer<PointDatum>("seat", "click", ({ item: point }) => {
+  const status = document.getElementById("point-status");
+  if (status) status.textContent = `已点击点位: ${point.name} (${point.id})`;
+});
 
 // ── 示例数据 ──────────────────────────────────────────────────────────
 let seed = 7;
